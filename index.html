@@ -312,13 +312,19 @@
   let selected = null;
 
   // ---- persistence ----
+  // localStorage may be unavailable (sandboxed/private contexts); fall back to memory.
+  const mem = {};
+  const ls = {
+    get(k) { try { return localStorage.getItem(k); } catch (e) { return k in mem ? mem[k] : null; } },
+    set(k, v) { try { localStorage.setItem(k, v); } catch (e) { mem[k] = String(v); } }
+  };
   const store = {
-    get level() { return parseInt(localStorage.getItem("cc_level") || "1", 10); },
-    set level(v) { localStorage.setItem("cc_level", v); },
-    get best() { return parseInt(localStorage.getItem("cc_best") || "0", 10); },
-    set best(v) { localStorage.setItem("cc_best", v); },
-    get muted() { return localStorage.getItem("cc_muted") === "1"; },
-    set muted(v) { localStorage.setItem("cc_muted", v ? "1" : "0"); }
+    get level() { return parseInt(ls.get("cc_level") || "1", 10); },
+    set level(v) { ls.set("cc_level", v); },
+    get best() { return parseInt(ls.get("cc_best") || "0", 10); },
+    set best(v) { ls.set("cc_best", v); },
+    get muted() { return ls.get("cc_muted") === "1"; },
+    set muted(v) { ls.set("cc_muted", v ? "1" : "0"); }
   };
 
   const idx = (r, c) => r * SIZE + c;
