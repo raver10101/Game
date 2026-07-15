@@ -106,6 +106,11 @@
   #overlay .box { padding: 30px; }
   #overlay h2 { font-size: 34px; margin-bottom: 8px; }
   #overlay p { color: var(--dim); margin-bottom: 18px; font-size: 15px; }
+  #modeBtns { display: flex; flex-direction: column; gap: 10px; min-width: 320px; }
+  .modeBtn { display: flex; flex-direction: column; align-items: center; gap: 3px; padding: 12px 18px; }
+  .modeBtn b { font-size: 17px; }
+  .modeBtn small { color: var(--dim); font-size: 12px; }
+  .modeBtn:hover { border-color: var(--accent); }
 
   #toast {
     position: absolute; top: 12px; left: 50%; transform: translateX(-50%);
@@ -129,6 +134,7 @@
   <div class="stat">💰 <span id="money">0</span></div>
   <div class="stat">❤️ <span id="lives">0</span></div>
   <div class="stat">🌊 <span id="waveLabel">Wave 0</span></div>
+  <div class="stat" id="modeLabel"></div>
   <div class="stat"><small>Best:</small> <span id="best">0</span></div>
   <div class="spacer"></div>
   <label class="chk"><input type="checkbox" id="autoChk"> auto-start</label>
@@ -141,11 +147,15 @@
   <div id="boardWrap">
     <canvas id="game" width="960" height="624"></canvas>
     <div id="toast"></div>
-    <div id="overlay">
+    <div id="overlay" class="show">
       <div class="box">
-        <h2 id="ovTitle">Game Over</h2>
-        <p id="ovText"></p>
-        <button id="restartBtn" class="primary">Play Again</button>
+        <h2 id="ovTitle">🏰 Tower Defense</h2>
+        <p id="ovText">Choose your difficulty</p>
+        <div id="modeBtns">
+          <button class="modeBtn" data-mode="easy"><b>🌿 Easy</b><small>30 waves · cheap towers · weaker enemies · 20 ❤️</small></button>
+          <button class="modeBtn" data-mode="medium"><b>⚔️ Medium</b><small>40 waves · tougher enemies · standard prices · 20 ❤️</small></button>
+          <button class="modeBtn" data-mode="hard"><b>💀 Hard</b><small>50 waves · brutal enemies · pricey towers · only 10 ❤️</small></button>
+        </div>
       </div>
     </div>
   </div>
@@ -196,8 +206,10 @@
         Armor reduces each hit — <b>poison ignores armor</b>.<br>
         <b>Bosses</b> appear every 10th wave: huge HP, regeneration, and they
         cost <b>10 lives</b> if they leak.<br>
-        Waves scale up forever. Each tower has <b>3 upgrade paths</b> (3 tiers each)
-        but you can invest in <b>at most 2 paths</b> per tower — choose wisely!
+        Clear <b>every wave</b> to win — 30 on Easy, 40 on Medium, 50 on Hard.
+        Each cleared round pays a <b>bonus that grows with the wave number</b>.
+        Every tower has <b>3 upgrade paths</b> (3 tiers each) but you can invest
+        in <b>at most 2 paths</b> per tower — choose wisely!
         Sell refunds 70%. <b>Space</b> starts the next wave.
       </div>
     </div>
@@ -426,8 +438,17 @@ function towerStats(tw){
   }
   return s;
 }
-function pathCost(type, tier){ return Math.round(TOWER_TYPES[type].cost * TIER_COST[tier]); }
+function towerCost(type){ return Math.round(TOWER_TYPES[type].cost * mode.costMul); }
+function pathCost(type, tier){ return Math.round(TOWER_TYPES[type].cost * TIER_COST[tier] * mode.costMul); }
 function pathLocked(tw, i){ return tw.paths[i] === 0 && tw.paths.filter(x => x > 0).length >= 2; }
+
+/* ---------- difficulty modes ---------- */
+const MODES = {
+  easy:   { name:'Easy',   icon:'🌿', costMul:0.8, hpMul:0.85, speedMul:1,    lives:20, waves:30, bonusMul:1.15 },
+  medium: { name:'Medium', icon:'⚔️', costMul:1,   hpMul:1.15, speedMul:1,    lives:20, waves:40, bonusMul:1 },
+  hard:   { name:'Hard',   icon:'💀', costMul:1.3, hpMul:1.35, speedMul:1.08, lives:10, waves:50, bonusMul:0.9 },
+};
+let modeKey = 'medium', mode = MODES.medium, awaitingMode = true;
 
 /* ---------- enemy definitions ---------- */
 const ENEMY_TYPES = {
@@ -435,11 +456,11 @@ const ENEMY_TYPES = {
   runner: { hp:24,  speed:105, bounty:7,  r:8,  armor:0,  color:'#e0c05a', lives:1 },
   brute:  { hp:150, speed:36,  bounty:16, r:13, armor:3,  color:'#b07ae0', lives:1 },
   shield: { hp:90,  speed:50,  bounty:14, r:11, armor:8,  color:'#7ab8e0', lives:1 },
-  boss:   { hp:2200,speed:27,  bounty:250,r:20, armor:10, color:'#ff5470', lives:10, regen:0.003 },
+  boss:   { hp:1500,speed:27,  bounty:250,r:20, armor:10, color:'#ff5470', lives:10, regen:0.003 },
 };
 
-function hpMul(lvl){ return Math.pow(1.13, lvl-1) * (1 + 0.10*(lvl-1)); }
-function bountyMul(lvl){ return 1 + 0.045*(lvl-1); }
+function hpMul(lvl){ const m = lvl-1; return 1 + 0.35*m + 0.06*m*m; }
+function bountyMul(lvl){ return 1 + 0.06*(lvl-1); }
 
 function buildWave(lvl){
   const q = []; // {type, gap seconds before this spawn}
@@ -468,27 +489,38 @@ let money, lives, wave, best, towers, enemies, projectiles, effects, particles, 
 let waveActive, spawnQueue, spawnTimer, gameOver, autoTimer;
 let placing = null, selected = null, hoverCell = null;
 let speedMul = 1, paused = false;
-best = parseInt(store.get('td_best') || '0', 10) || 0;
 
-function resetGame(){
-  money = 220; lives = 20; wave = 0;
+function resetGame(k){
+  if (k){ modeKey = k; mode = MODES[k]; }
+  awaitingMode = false;
+  best = parseInt(store.get('td_best_' + modeKey) || '0', 10) || 0;
+  money = 220; lives = mode.lives; wave = 0;
   towers = []; enemies = []; projectiles = []; effects = []; particles = []; floaters = [];
   waveActive = false; spawnQueue = []; spawnTimer = 0; gameOver = false; autoTimer = -1;
   placing = null; selected = null;
+  document.getElementById('modeLabel').textContent = `${mode.icon} ${mode.name}`;
   document.getElementById('overlay').classList.remove('show');
+  if (k) toast(`${mode.icon} ${mode.name} — survive all ${mode.waves} waves!`, true);
   updateHud(); updateSelCard(); updateTowerGrid();
+}
+
+function showModeSelect(title, text){
+  awaitingMode = true;
+  document.getElementById('ovTitle').textContent = title;
+  document.getElementById('ovText').textContent = text;
+  document.getElementById('overlay').classList.add('show');
 }
 
 /* ---------- entities ---------- */
 function spawnEnemy(type){
   const def = ENEMY_TYPES[type];
-  const hp = def.hp * hpMul(wave);
+  const hp = def.hp * hpMul(wave) * mode.hpMul;
   enemies.push({
     type, def,
     x: WAYPOINTS[0].x, y: WAYPOINTS[0].y,
     wp: 1, traveled: 0,
     hp, maxHp: hp,
-    speed: def.speed * (1 + Math.min(0.5, (wave-1)*0.006)),
+    speed: def.speed * (1 + Math.min(0.5, (wave-1)*0.006)) * mode.speedMul,
     armor: def.armor + Math.floor(wave/12),
     bounty: Math.round(def.bounty * bountyMul(wave)),
     r: def.r, slowT: 0, slowF: 1, dotT: 0, dotDps: 0,
@@ -704,12 +736,18 @@ function update(dt){
   // wave completion
   if (waveActive && !spawnQueue.length && !enemies.length){
     waveActive = false;
-    const bonus = 30 + wave*5;
+    const bonus = Math.round((25 + wave*7) * mode.bonusMul);
     money += bonus;
-    floaters.push({ x:canvas.width/2, y:80, text:`Wave ${wave} cleared! +${bonus}`, t:1.6, color:'#7ae582', big:true });
-    sfx.wave();
-    if (wave > best){ best = wave; store.set('td_best', best); }
-    if (document.getElementById('autoChk').checked) autoTimer = 2.0;
+    floaters.push({ x:canvas.width/2, y:80, text:`Wave ${wave} cleared! +${bonus} bonus`, t:1.6, color:'#7ae582', big:true });
+    if (wave > best){ best = wave; store.set('td_best_' + modeKey, best); }
+    if (wave >= mode.waves){
+      gameOver = true;
+      sfx.upgrade(); sfx.wave();
+      showModeSelect('🏆 Victory!', `You cleared all ${mode.waves} waves on ${mode.name}! Pick a difficulty to play again.`);
+    } else {
+      sfx.wave();
+      if (document.getElementById('autoChk').checked) autoTimer = 2.0;
+    }
   }
   if (autoTimer > 0){
     autoTimer -= dt;
@@ -718,7 +756,7 @@ function update(dt){
 }
 
 function startWave(){
-  if (waveActive || gameOver) return;
+  if (waveActive || gameOver || awaitingMode) return;
   wave++;
   spawnQueue = buildWave(wave);
   spawnTimer = 0.4;
@@ -733,10 +771,8 @@ function endGame(){
   gameOver = true;
   waveActive = false;
   sfx.over();
-  if (wave > best){ best = wave; store.set('td_best', best); }
-  document.getElementById('ovTitle').textContent = '💀 Game Over';
-  document.getElementById('ovText').textContent = `You were overrun on wave ${wave}. Best run: wave ${best}.`;
-  document.getElementById('overlay').classList.add('show');
+  showModeSelect('💀 Game Over',
+    `Overrun on wave ${wave} of ${mode.waves} (${mode.name}). Record: ${best} waves cleared. Pick a difficulty to try again.`);
 }
 
 /* ---------- rendering ---------- */
@@ -766,7 +802,7 @@ function draw(){
   // placement ghost
   if (placing && hoverCell){
     const [c, r] = hoverCell;
-    const ok = canPlace(c, r) && money >= TOWER_TYPES[placing].cost;
+    const ok = canPlace(c, r) && money >= towerCost(placing);
     const x = (c+0.5)*TILE, y = (r+0.5)*TILE;
     const st = towerStats({ type: placing, paths: [0,0,0] });
     ctx.beginPath(); ctx.arc(x, y, st.range, 0, Math.PI*2);
@@ -939,7 +975,7 @@ canvas.addEventListener('click', ev => {
   if (gameOver) return;
   const { c, r } = cellFromEvent(ev);
   if (placing){
-    const cost = TOWER_TYPES[placing].cost;
+    const cost = towerCost(placing);
     if (canPlace(c, r) && money >= cost){
       money -= cost;
       towers.push({ type:placing, c, r, x:(c+0.5)*TILE, y:(r+0.5)*TILE,
@@ -970,12 +1006,16 @@ const $ = id => document.getElementById(id);
 function updateHud(){
   $('money').textContent = Math.floor(money);
   $('lives').textContent = lives;
-  $('waveLabel').textContent = waveActive ? `Wave ${wave}` : `Wave ${wave} done`;
+  $('waveLabel').textContent = `Wave ${wave}/${mode.waves}`;
   $('best').textContent = best;
   const btn = $('startBtn');
   const next = wave + 1;
-  btn.disabled = waveActive || gameOver;
-  btn.textContent = waveActive ? `Wave ${wave}…` : (next % 10 === 0 ? `⚠️ Start Wave ${next} (BOSS)` : `Start Wave ${next}`);
+  btn.disabled = waveActive || gameOver || awaitingMode;
+  btn.textContent = waveActive ? `Wave ${wave}…`
+    : next > mode.waves ? '🏆 Complete!'
+    : next === mode.waves ? `⚔️ FINAL Wave ${next}`
+    : next % 10 === 0 ? `⚠️ Start Wave ${next} (BOSS)`
+    : `Start Wave ${next}`;
 }
 
 function updateTowerGrid(){
@@ -986,15 +1026,16 @@ function updateTowerGrid(){
       const el = document.createElement('div');
       el.className = 'towerBtn'; el.id = 'tb_'+k;
       el.title = b.desc;
-      el.innerHTML = `<span class="ic">${b.icon}</span><span>${b.name}</span><span class="cost">💰${b.cost}</span><span class="key">[${i+1}]</span>`;
+      el.innerHTML = `<span class="ic">${b.icon}</span><span>${b.name}</span><span class="cost" id="tbc_${k}"></span><span class="key">[${i+1}]</span>`;
       el.addEventListener('click', () => setPlacing(placing === k ? null : k));
       grid.appendChild(el);
     });
   }
   TOWER_KEYS.forEach(k => {
     const el = $('tb_'+k);
+    $('tbc_'+k).textContent = '💰' + towerCost(k);
     el.classList.toggle('selected', placing === k);
-    el.classList.toggle('poor', money < TOWER_TYPES[k].cost);
+    el.classList.toggle('poor', money < towerCost(k));
   });
 }
 
@@ -1070,7 +1111,8 @@ $('targetBtn').addEventListener('click', () => {
 });
 
 $('startBtn').addEventListener('click', () => { ac(); startWave(); });
-$('restartBtn').addEventListener('click', () => resetGame());
+document.querySelectorAll('.modeBtn').forEach(b =>
+  b.addEventListener('click', () => { ac(); resetGame(b.dataset.mode); }));
 $('speedBtn').addEventListener('click', () => {
   speedMul = speedMul === 1 ? 2 : (speedMul === 2 ? 3 : 1);
   $('speedBtn').textContent = `▶ ${speedMul}×`;
@@ -1112,6 +1154,7 @@ function frame(now){
 }
 
 resetGame();
+showModeSelect('🏰 Tower Defense', 'Choose your difficulty');
 requestAnimationFrame(frame);
 </script>
 </body>
