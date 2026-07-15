@@ -122,6 +122,10 @@
   .mapCard .stars { font-size: 13px; letter-spacing: 3px; line-height: 1; }
   .mapCard .stars .on { color: var(--gold); text-shadow: 0 0 6px rgba(255,209,102,.5); }
   .mapCard .stars .off { color: #39435c; }
+  .mapCard .stars .lockTxt { font-size: 10px; letter-spacing: 0; color: var(--dim); }
+  .mapCard.locked { opacity: .55; cursor: not-allowed; }
+  .mapCard.locked canvas { filter: grayscale(.85) brightness(.6); }
+  .mapCard.locked:hover { border-color: var(--line); transform: none; }
   .modeBtn small { white-space: normal; }
   #modeWrap { display: flex; flex-direction: column; align-items: center; }
   #backToMaps, #resumeBtn { margin-top: 12px; font-size: 13px; }
@@ -302,54 +306,54 @@ const OBSTACLE_ICONS = { rock:'🪨', tree:'🌲', house:'🏚️', statue:'🗿
 /* theme: ga/gb ground checker, path/edge road colors, plate = obstacle base,
    deco = weighted scatter decorations [shape, color, weight], density per cell */
 const MAPS = [
-  { name:'The Serpent', icon:'🐍',
+  { name:'The Serpent', icon:'🐍', unlock:0,
     wp:[[-1,2],[16,2],[16,5],[3,5],[3,8],[12,8],[12,11],[20,11]],
     obs:[[7,3,'rock'],[12,6,'tree'],[8,10,'rock'],[17,8,'tree'],[1,10,'rock'],[18,4,'house']],
     theme:{ ga:'#16241c', gb:'#182719', path:'#31452b', edge:'#46613c', plate:'#1f3328',
       density:0.55, deco:[['tuft','#2f4a33',4],['ripple','#1f4038',2],['speck','#223c2a',2]] } },
-  { name:'Long March', icon:'🛤️',
+  { name:'Long March', icon:'🛤️', unlock:1,
     wp:[[-1,1],[18,1],[18,11],[1,11],[1,4],[10,4]],
     obs:[[6,7,'tree'],[9,8,'rock'],[13,6,'house'],[4,6,'tree'],[15,3,'rock'],[12,9,'tree']],
     theme:{ ga:'#1c2718', gb:'#1e2a1a', path:'#453a28', edge:'#5c4c34', plate:'#28331f',
       density:0.5, deco:[['tuft','#33502c',4],['pebble','#b8a24a',1],['speck','#2a4023',2]] } },
-  { name:'Switchback', icon:'⛰️',
+  { name:'Switchback', icon:'⛰️', unlock:2,
     wp:[[3,-1],[3,10],[7,10],[7,2],[11,2],[11,10],[15,10],[15,2],[20,2]],
     obs:[[1,4,'rock'],[5,5,'tree'],[9,6,'rock'],[13,5,'tree'],[17,7,'house'],[18,10,'rock'],[1,12,'tree']],
     theme:{ ga:'#232830', gb:'#262b34', path:'#3d4654', edge:'#525e70', plate:'#2b3240',
       density:0.5, deco:[['pebble','#39414f',3],['patch','#aab6c8',2],['speck','#2e3542',2]] } },
-  { name:'The Gauntlet', icon:'⚔️',
+  { name:'The Gauntlet', icon:'⚔️', unlock:4,
     wp:[[-1,6],[20,6]],
     obs:[[3,5,'house'],[6,7,'house'],[9,5,'rock'],[12,7,'house'],[15,5,'tree'],[2,7,'rock'],[4,4,'tree'],
          [7,4,'rock'],[10,8,'tree'],[13,4,'house'],[16,8,'rock'],[18,5,'tree'],[8,9,'house'],[11,2,'rock']],
     theme:{ ga:'#241a18', gb:'#271c19', path:'#443028', edge:'#5e4136', plate:'#30211c',
       density:0.55, deco:[['speck','#161010',4],['pebble','#a8542c',1],['patch','#120c0a',2]] } },
-  { name:'Riverbend', icon:'🏞️',
+  { name:'Riverbend', icon:'🏞️', unlock:6,
     wp:[[-1,2],[17,2],[17,10],[2,10],[2,13]],
     obs:[[5,5,'tree'],[9,6,'rock'],[13,5,'tree'],[7,8,'house'],[15,7,'rock'],[3,4,'tree']],
     theme:{ ga:'#17251f', gb:'#192822', path:'#474d2e', edge:'#5f6540', plate:'#213228',
       density:0.55, deco:[['tuft','#2e4c38',3],['ripple','#2e6b6b',2],['pebble','#3a5a4a',1]] } },
-  { name:'The Citadel', icon:'🏛️',
+  { name:'The Citadel', icon:'🏛️', unlock:8,
     wp:[[10,-1],[10,3],[15,3],[15,9],[5,9],[5,6],[8,6]],
     obs:[[8,4,'temple'],[12,5,'statue'],[13,7,'house'],[7,7,'rock'],[2,3,'tree'],[17,6,'tree'],[3,11,'rock'],[12,11,'tree']],
     theme:{ ga:'#232630', gb:'#262933', path:'#4a4a5a', edge:'#616174', plate:'#2e3140',
       density:0.45, deco:[['speck','#34384a',3],['pebble','#3c4054',2],['sparkle','#4a4f66',1]] } },
-  { name:'Coastal Cliffs', icon:'🌊',
+  { name:'Coastal Cliffs', icon:'🌊', unlock:11,
     wp:[[20,3],[5,3],[5,11],[14,11],[14,7],[20,7]],
     obs:[[8,5,'rock'],[11,6,'rock'],[9,9,'rock'],[16,5,'rock'],[17,9,'rock'],[2,6,'tree'],[12,4,'tree']],
     theme:{ ga:'#2a2620', gb:'#2d2922', path:'#4c4133', edge:'#665741', plate:'#332e26',
       density:0.55, deco:[['ripple','#3d6a75',3],['pebble','#c9b28a',1],['speck','#3a352b',2]] } },
-  { name:'Canyon Run', icon:'🏜️',
+  { name:'Canyon Run', icon:'🏜️', unlock:13,
     wp:[[6,13],[6,4],[13,4],[13,13]],
     obs:[[4,6,'rock'],[4,9,'rock'],[8,7,'rock'],[11,7,'rock'],[15,6,'rock'],[15,9,'rock'],
          [9,2,'tree'],[10,10,'house'],[2,3,'tree'],[17,3,'tree']],
     theme:{ ga:'#2a1e16', gb:'#2d2018', path:'#553b27', edge:'#714e32', plate:'#38281c',
       density:0.55, deco:[['ripple','#3d2b1d',3],['pebble','#45311f',2],['speck','#241812',2]] } },
-  { name:'Labyrinth', icon:'🌀',
+  { name:'Labyrinth', icon:'🌀', unlock:16,
     wp:[[-1,11],[4,11],[4,2],[8,2],[8,11],[12,11],[12,2],[16,2],[16,11],[20,11]],
     obs:[[2,5,'house'],[6,6,'statue'],[10,6,'house'],[14,6,'statue'],[18,5,'house'],[6,0,'tree'],[14,0,'tree']],
     theme:{ ga:'#1f1b2e', gb:'#221d32', path:'#3d3459', edge:'#544877', plate:'#2a2440',
       density:0.5, deco:[['sparkle','#4a3f78',2],['speck','#2c2545',3],['pebble','#372e58',1]] } },
-  { name:'The Spiral', icon:'🐚',
+  { name:'The Spiral', icon:'🐚', unlock:19,
     wp:[[-1,1],[18,1],[18,11],[1,11],[1,3],[15,3],[15,9],[4,9],[4,5],[12,5],[12,7],[8,7]],
     obs:[[6,7,'tree'],[10,10,'rock'],[17,6,'tree'],[2,12,'rock']],
     theme:{ ga:'#14232b', gb:'#16252e', path:'#30505c', edge:'#426b7a', plate:'#1d323c',
@@ -742,10 +746,25 @@ function showModeSelect(title, text){
 
 function winKey(i, k){ return `td_win_m${i}_${k}`; }
 
+function totalStars(){
+  let n = 0;
+  MAPS.forEach((m, i) => Object.keys(MODES).forEach(k => { if (store.get(winKey(i, k))) n++; }));
+  return n;
+}
+
 function refreshMapStars(){
+  const stars = totalStars();
   MAPS.forEach((m, i) => {
     const el = document.getElementById('stars_' + i);
-    if (!el) return;
+    const card = document.getElementById('mapcard_' + i);
+    if (!el || !card) return;
+    const locked = stars < m.unlock;
+    card.classList.toggle('locked', locked);
+    if (locked){
+      el.innerHTML = `<span class="lockTxt">🔒 ${m.unlock}⭐ to unlock</span>`;
+      el.title = `Earn ${m.unlock} stars to unlock (you have ${stars})`;
+      return;
+    }
     const keys = Object.keys(MODES);
     el.innerHTML = keys.map(k =>
       store.get(winKey(i, k)) ? '<span class="on">★</span>' : '<span class="off">☆</span>').join('');
@@ -758,7 +777,7 @@ function showMapSelect(){
   refreshMapStars();
   document.getElementById('ovTitle').textContent = '🗺️ Choose Your Map';
   document.getElementById('ovText').textContent =
-    'Rocks and buildings block tower line of sight — 💣 cannons and 🚀 missiles lob over them';
+    `You have ${totalStars()} ⭐ — clear a difficulty to earn stars and unlock new maps`;
   document.getElementById('mapGrid').style.display = 'grid';
   document.getElementById('modeWrap').style.display = 'none';
   document.getElementById('resumeBtn').style.display = (!gameOver && wave > 0) ? '' : 'none';
@@ -770,6 +789,7 @@ function buildMapGrid(){
   MAPS.forEach((m, i) => {
     const card = document.createElement('div');
     card.className = 'mapCard';
+    card.id = 'mapcard_' + i;
     const cv = document.createElement('canvas');
     const s = 7;
     cv.width = COLS*s; cv.height = ROWS*s;
@@ -794,6 +814,12 @@ function buildMapGrid(){
     card.appendChild(cv); card.appendChild(label); card.appendChild(stars);
     card.addEventListener('click', () => {
       ac();
+      const stars = totalStars();
+      if (stars < m.unlock){
+        document.getElementById('ovText').textContent =
+          `🔒 ${m.name} unlocks at ${m.unlock} ⭐ — you have ${stars}. Clear more difficulties to earn stars!`;
+        return;
+      }
       pendingMap = i; // applied when a difficulty is picked
       showModeSelect(`${m.icon} ${m.name}`, 'Choose your difficulty');
     });
