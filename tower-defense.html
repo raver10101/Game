@@ -119,6 +119,9 @@
   .mapCard:hover { border-color: var(--accent); transform: translateY(-2px); }
   .mapCard canvas { display: block; width: 100%; border-radius: 4px; }
   .mapCard span { font-size: 11px; font-weight: 600; white-space: nowrap; }
+  .mapCard .stars { font-size: 13px; letter-spacing: 3px; line-height: 1; }
+  .mapCard .stars .on { color: var(--gold); text-shadow: 0 0 6px rgba(255,209,102,.5); }
+  .mapCard .stars .off { color: #39435c; }
   .modeBtn small { white-space: normal; }
   #modeWrap { display: flex; flex-direction: column; align-items: center; }
   #backToMaps, #resumeBtn { margin-top: 12px; font-size: 13px; }
@@ -737,8 +740,22 @@ function showModeSelect(title, text){
   document.getElementById('overlay').classList.add('show');
 }
 
+function winKey(i, k){ return `td_win_m${i}_${k}`; }
+
+function refreshMapStars(){
+  MAPS.forEach((m, i) => {
+    const el = document.getElementById('stars_' + i);
+    if (!el) return;
+    const keys = Object.keys(MODES);
+    el.innerHTML = keys.map(k =>
+      store.get(winKey(i, k)) ? '<span class="on">★</span>' : '<span class="off">☆</span>').join('');
+    el.title = keys.map(k => `${MODES[k].name}: ${store.get(winKey(i, k)) ? 'cleared ✓' : 'not cleared'}`).join(' · ');
+  });
+}
+
 function showMapSelect(){
   awaitingMode = true;
+  refreshMapStars();
   document.getElementById('ovTitle').textContent = '🗺️ Choose Your Map';
   document.getElementById('ovText').textContent =
     'Rocks and buildings block tower line of sight — 💣 cannons and 🚀 missiles lob over them';
@@ -772,7 +789,9 @@ function buildMapGrid(){
     g.fillStyle = '#ff6b6b'; g.fillRect(clamp(cz,0,COLS-1)*s, clamp(rz,0,ROWS-1)*s, s, s);
     const label = document.createElement('span');
     label.textContent = `${m.icon} ${m.name}`;
-    card.appendChild(cv); card.appendChild(label);
+    const stars = document.createElement('span');
+    stars.className = 'stars'; stars.id = 'stars_' + i;
+    card.appendChild(cv); card.appendChild(label); card.appendChild(stars);
     card.addEventListener('click', () => {
       ac();
       pendingMap = i; // applied when a difficulty is picked
@@ -1015,8 +1034,14 @@ function update(dt){
     if (wave > best){ best = wave; store.set(bestKey(), best); }
     if (wave >= mode.waves){
       gameOver = true;
+      const firstWin = !store.get(winKey(mapIdx, modeKey));
+      store.set(winKey(mapIdx, modeKey), '1');
+      const earned = Object.keys(MODES).filter(k => store.get(winKey(mapIdx, k))).length;
       sfx.upgrade(); sfx.wave();
-      showModeSelect('🏆 Victory!', `You cleared all ${mode.waves} waves on ${mode.name}! Pick a difficulty to play again.`);
+      showModeSelect('🏆 Victory!',
+        `You cleared all ${mode.waves} waves on ${mode.name}!`
+        + (firstWin ? ` ⭐ Star earned — ${map.name} now has ${earned}/3 stars.` : '')
+        + ' Pick a difficulty to play again.');
     } else {
       sfx.wave();
       if (document.getElementById('autoChk').checked) autoTimer = 2.0;
