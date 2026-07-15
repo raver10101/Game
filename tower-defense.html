@@ -129,6 +129,12 @@
   .modeBtn small { white-space: normal; }
   #modeWrap { display: flex; flex-direction: column; align-items: center; }
   #backToMaps, #resumeBtn { margin-top: 12px; font-size: 13px; }
+  #premiumBtn {
+    margin-top: 14px; font-size: 14px; font-weight: 700; padding: 10px 22px;
+    background: linear-gradient(135deg, #6b5116, #8a6a1d); border-color: #c9a23c; color: #ffe9b0;
+  }
+  #premiumBtn:hover { background: linear-gradient(135deg, #7d5f1a, #a37e24); }
+  #premiumBtn.active { background: var(--panel2); border-color: var(--gold); color: var(--gold); font-weight: 600; }
   #modeBtns { display: flex; flex-direction: column; gap: 10px; width: min(360px, 92vw); margin: 0 auto; }
   .modeBtn { display: flex; flex-direction: column; align-items: center; gap: 3px; padding: 12px 18px; }
   .modeBtn b { font-size: 17px; }
@@ -176,6 +182,7 @@
         <h2 id="ovTitle">🏰 Tower Defense</h2>
         <p id="ovText">Choose your map</p>
         <div id="mapGrid"></div>
+        <button id="premiumBtn"></button>
         <div id="modeWrap" style="display:none">
           <div id="modeBtns">
             <button class="modeBtn" data-mode="easy"><b>🌿 Easy</b><small>30 waves · cheap towers · weaker enemies · 20 ❤️</small></button>
@@ -739,6 +746,7 @@ function showModeSelect(title, text){
   document.getElementById('ovTitle').textContent = title;
   document.getElementById('ovText').textContent = text;
   document.getElementById('mapGrid').style.display = 'none';
+  document.getElementById('premiumBtn').style.display = 'none';
   document.getElementById('modeWrap').style.display = 'flex';
   document.getElementById('resumeBtn').style.display = 'none';
   document.getElementById('overlay').classList.add('show');
@@ -752,13 +760,16 @@ function totalStars(){
   return n;
 }
 
+function isPremium(){ return store.get('td_premium') === '1'; }
+
 function refreshMapStars(){
   const stars = totalStars();
+  const premium = isPremium();
   MAPS.forEach((m, i) => {
     const el = document.getElementById('stars_' + i);
     const card = document.getElementById('mapcard_' + i);
     if (!el || !card) return;
-    const locked = stars < m.unlock;
+    const locked = !premium && stars < m.unlock;
     card.classList.toggle('locked', locked);
     if (locked){
       el.innerHTML = `<span class="lockTxt">🔒 ${m.unlock}⭐ to unlock</span>`;
@@ -772,13 +783,33 @@ function refreshMapStars(){
   });
 }
 
+let premiumConfirm = false;
+function refreshPremiumBtn(){
+  const b = document.getElementById('premiumBtn');
+  premiumConfirm = false;
+  if (isPremium()){
+    b.classList.add('active');
+    b.textContent = '👑 Premium active — all maps unlocked · tap to cancel';
+  } else {
+    b.classList.remove('active');
+    b.textContent = '👑 Unlock all maps — $0.99/month';
+  }
+}
+
+function mapSelectHint(){
+  return isPremium()
+    ? `👑 Premium — all maps unlocked · you have ${totalStars()} ⭐`
+    : `You have ${totalStars()} ⭐ — clear a difficulty to earn stars and unlock new maps`;
+}
+
 function showMapSelect(){
   awaitingMode = true;
   refreshMapStars();
+  refreshPremiumBtn();
   document.getElementById('ovTitle').textContent = '🗺️ Choose Your Map';
-  document.getElementById('ovText').textContent =
-    `You have ${totalStars()} ⭐ — clear a difficulty to earn stars and unlock new maps`;
+  document.getElementById('ovText').textContent = mapSelectHint();
   document.getElementById('mapGrid').style.display = 'grid';
+  document.getElementById('premiumBtn').style.display = '';
   document.getElementById('modeWrap').style.display = 'none';
   document.getElementById('resumeBtn').style.display = (!gameOver && wave > 0) ? '' : 'none';
   document.getElementById('overlay').classList.add('show');
@@ -815,7 +846,7 @@ function buildMapGrid(){
     card.addEventListener('click', () => {
       ac();
       const stars = totalStars();
-      if (stars < m.unlock){
+      if (!isPremium() && stars < m.unlock){
         document.getElementById('ovText').textContent =
           `🔒 ${m.name} unlocks at ${m.unlock} ⭐ — you have ${stars}. Clear more difficulties to earn stars!`;
         return;
@@ -1426,6 +1457,30 @@ document.querySelectorAll('.modeBtn').forEach(b =>
   b.addEventListener('click', () => { ac(); resetGame(b.dataset.mode); }));
 $('backToMaps').addEventListener('click', showMapSelect);
 $('mapBtn').addEventListener('click', showMapSelect);
+$('premiumBtn').addEventListener('click', () => {
+  ac();
+  const b = $('premiumBtn');
+  if (isPremium()){
+    if (!premiumConfirm){
+      premiumConfirm = true;
+      b.textContent = '❌ Cancel subscription? Maps re-lock to your stars — tap again to confirm';
+      return;
+    }
+    store.set('td_premium', '0');
+    $('ovText').textContent = 'Subscription cancelled — maps follow your ⭐ progress again.';
+  } else {
+    if (!premiumConfirm){
+      premiumConfirm = true;
+      b.textContent = '✅ Confirm $0.99/month? (demo — no real charge) · tap again';
+      return;
+    }
+    store.set('td_premium', '1');
+    sfx.upgrade();
+    $('ovText').textContent = '👑 All maps unlocked! (demo subscription — nothing was actually billed)';
+  }
+  refreshPremiumBtn();
+  refreshMapStars();
+});
 $('resumeBtn').addEventListener('click', () => {
   awaitingMode = false;
   $('overlay').classList.remove('show');
