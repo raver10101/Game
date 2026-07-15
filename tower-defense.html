@@ -223,7 +223,8 @@
         <b>Enemies:</b> grunts, fast runners, armored brutes, shielded heavies.
         Armor reduces each hit — <b>poison ignores armor</b>.<br>
         🪨 Rocks and 🏚️ buildings <b>block line of sight</b> and can't be built on —
-        but 💣 Cannon and 🚀 Missile <b>lob over them</b>.<br>
+        but 💣 Cannon and 🚀 Missile <b>lob over them</b>.
+        🎯 Snipers hit <b>anywhere on the map</b> with a clear sight-line.<br>
         <b>Bosses</b> appear every 10th wave: huge HP, regeneration, and they
         cost <b>10 lives</b> if they leak.<br>
         Clear <b>every wave</b> to win — 30 on Easy, 40 on Medium, 50 on Hard.
@@ -376,8 +377,8 @@ const TOWER_TYPES = {
              desc:'Lobs splash shells clean over buildings. Great vs groups.' },
   frost:   { name:'Frost',   icon:'❄️', cost:70,  dmg:5,   range:105, rate:1.3, projSpeed:400, slowF:0.55, slowT:2.0, color:'#7fe3ff',
              desc:'Chills enemies, slowing them down. Low damage.' },
-  sniper:  { name:'Sniper',  icon:'🎯', cost:120, dmg:62,  range:235, rate:0.45, hitscan:true, color:'#d6ff8f',
-             desc:'Huge single-target damage at extreme range.' },
+  sniper:  { name:'Sniper',  icon:'🎯', cost:150, dmg:62,  range:9999, rate:0.45, hitscan:true, global:true, color:'#d6ff8f',
+             desc:'Hits anywhere on the map — needs a clear sight-line.' },
   tesla:   { name:'Tesla',   icon:'⚡', cost:140, dmg:16,  range:115, rate:1.5, chain:3, color:'#ffe95a',
              desc:'Lightning arcs between several enemies.' },
   poison:  { name:'Poison',  icon:'☠️', cost:100, dmg:6,   range:110, rate:1.0, projSpeed:380, dotDps:14, dotT:3, color:'#a4f77a',
@@ -448,9 +449,9 @@ const UPGRADE_PATHS = {
       { d:'25% chance to crit for ×2.5', m:{critC:0.25, critM:2.5} },
       { d:'40% crit chance, crits ×3', m:{critC:0.15, critM:3} } ]},
     { name:'🔭 Spotter', tiers:[
-      { d:'+15% range, +25% fire rate', m:{range:1.15, rate:1.25} },
-      { d:'+15% range, +30% fire rate', m:{range:1.15, rate:1.3} },
-      { d:'+20% range, +35% fire rate', m:{range:1.2, rate:1.35} } ]},
+      { d:'+30% fire rate', m:{rate:1.3} },
+      { d:'+35% fire rate', m:{rate:1.35} },
+      { d:'+40% fire rate, +20% damage', m:{rate:1.4, dmg:1.2} } ]},
   ],
   tesla: [
     { name:'💥 High Voltage', tiers:[
@@ -1205,9 +1206,10 @@ function updateSelCard(){
   $('selName').textContent = `${b.icon} ${b.name}`;
   $('selDesc').textContent = b.desc;
   $('selDmg').textContent = Math.round(st.dmg) + (st.dotDps ? ` +${Math.round(st.dotDps)}/s` : '');
-  $('selRange').textContent = Math.round(st.range);
+  $('selRange').textContent = b.global ? '∞ map-wide' : Math.round(st.range);
   $('selRate').textContent = st.rate.toFixed(2) + '/s';
   const spec = [];
+  if (b.global) spec.push('needs sight-line');
   if (st.splash) spec.push(`splash ${Math.round(st.splash)}`);
   if (st.splashFull) spec.push('no falloff');
   if (st.chain) spec.push(`chains ×${st.chain}`);
