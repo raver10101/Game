@@ -82,11 +82,18 @@
   .towerBtn.poor { opacity: .45; }
 
   #selInfo .row { display: flex; justify-content: space-between; font-size: 13px; padding: 2px 0; }
-  #selInfo .row span:last-child { color: var(--accent); }
+  #selInfo .row span:last-child { color: var(--accent); text-align: right; }
   #selInfo .btns { display: flex; gap: 6px; margin-top: 8px; }
   #selInfo .btns button { flex: 1; font-size: 13px; padding: 6px 4px; }
   #selName { font-size: 15px; font-weight: 700; margin-bottom: 4px; }
   #selDesc { font-size: 12px; color: var(--dim); margin-bottom: 6px; }
+  .pathRow { border-top: 1px solid var(--line); padding: 7px 0 6px; margin-top: 5px; }
+  .pathRow .head { display: flex; justify-content: space-between; align-items: center; }
+  .pathRow .pname { font-size: 13px; font-weight: 600; }
+  .pathRow .pips { letter-spacing: 3px; font-size: 11px; }
+  .pathRow .pdesc { font-size: 11px; color: var(--dim); margin: 2px 0 5px; min-height: 13px; }
+  .pathRow button { width: 100%; font-size: 12px; padding: 5px 6px; }
+  .pathRow.locked { opacity: .45; }
 
   #legend { font-size: 12px; color: var(--dim); line-height: 1.55; }
   #legend b { color: var(--text); }
@@ -155,13 +162,27 @@
       <div id="selInfo">
         <div id="selName"></div>
         <div id="selDesc"></div>
-        <div class="row"><span>Level</span><span id="selLvl"></span></div>
         <div class="row"><span>Damage</span><span id="selDmg"></span></div>
         <div class="row"><span>Range</span><span id="selRange"></span></div>
         <div class="row"><span>Fire rate</span><span id="selRate"></span></div>
+        <div class="row"><span>Special</span><span id="selSpec"></span></div>
         <div class="row"><span>Targeting</span><span id="selTarget"></span></div>
+        <div class="pathRow" id="pr0">
+          <div class="head"><span class="pname" id="p0name"></span><span class="pips" id="p0pips"></span></div>
+          <div class="pdesc" id="p0desc"></div>
+          <button id="p0btn"></button>
+        </div>
+        <div class="pathRow" id="pr1">
+          <div class="head"><span class="pname" id="p1name"></span><span class="pips" id="p1pips"></span></div>
+          <div class="pdesc" id="p1desc"></div>
+          <button id="p1btn"></button>
+        </div>
+        <div class="pathRow" id="pr2">
+          <div class="head"><span class="pname" id="p2name"></span><span class="pips" id="p2pips"></span></div>
+          <div class="pdesc" id="p2desc"></div>
+          <button id="p2btn"></button>
+        </div>
         <div class="btns">
-          <button id="upgradeBtn"></button>
           <button id="targetBtn">🎯 Mode</button>
           <button id="sellBtn" class="danger"></button>
         </div>
@@ -175,8 +196,9 @@
         Armor reduces each hit — <b>poison ignores armor</b>.<br>
         <b>Bosses</b> appear every 10th wave: huge HP, regeneration, and they
         cost <b>10 lives</b> if they leak.<br>
-        Waves scale up forever. Upgrade towers (3 upgrades each), sell refunds 70%.
-        <b>Space</b> starts the next wave.
+        Waves scale up forever. Each tower has <b>3 upgrade paths</b> (3 tiers each)
+        but you can invest in <b>at most 2 paths</b> per tower — choose wisely!
+        Sell refunds 70%. <b>Space</b> starts the next wave.
       </div>
     </div>
   </div>
@@ -263,25 +285,149 @@ const TOWER_TYPES = {
              desc:'Homing rockets with a big blast radius.' },
 };
 const TOWER_KEYS = Object.keys(TOWER_TYPES);
-const MAX_TOWER_LEVEL = 4;
 
-function towerStats(type, level){
-  const b = TOWER_TYPES[type], m = level - 1;
-  return {
-    dmg: b.dmg * Math.pow(1.65, m),
-    range: b.range * Math.pow(1.08, m),
-    rate: b.rate * Math.pow(1.12, m),
-    splash: b.splash ? b.splash * Math.pow(1.1, m) : 0,
-    chain: b.chain ? b.chain + m : 0,
-    slowF: b.slowF ? Math.max(0.25, b.slowF - 0.08*m) : 0,
-    slowT: b.slowT ? b.slowT + 0.4*m : 0,
-    dotDps: b.dotDps ? b.dotDps * Math.pow(1.6, m) : 0,
-    dotT: b.dotT || 0,
-  };
+/* ---------- upgrade paths ----------
+   Each tower has 3 paths of 3 tiers. A tower may invest in AT MOST 2 paths;
+   once two paths have any tier, the third locks.
+   Modifier semantics: dmg/rate/range/splash/dotDps multiply; slowMul multiplies
+   slow factor (lower = stronger, clamped at 0.2); slowT/dotT/chain/decayAdd/
+   shred/critC add; critM takes the max; pierce/splashFull/multi set. */
+const TIER_COST = [0.8, 1.4, 2.4]; // × tower base cost per tier
+const PATH_COLORS = ['#ffd166', '#7ae582', '#5ac8fa'];
+const UPGRADE_PATHS = {
+  gun: [
+    { name:'💥 Firepower', tiers:[
+      { d:'+70% damage', m:{dmg:1.7} },
+      { d:'+80% damage', m:{dmg:1.8} },
+      { d:'Damage ×2', m:{dmg:2.0} } ]},
+    { name:'🔥 Rapid Fire', tiers:[
+      { d:'+40% fire rate', m:{rate:1.4} },
+      { d:'+40% fire rate', m:{rate:1.4} },
+      { d:'+50% fire rate', m:{rate:1.5} } ]},
+    { name:'📏 Long Barrel', tiers:[
+      { d:'+25% range', m:{range:1.25} },
+      { d:'+25% range', m:{range:1.25} },
+      { d:'AP rounds: bullets ignore armor', m:{range:1.15, pierce:1} } ]},
+  ],
+  cannon: [
+    { name:'💥 Heavy Shells', tiers:[
+      { d:'+60% damage', m:{dmg:1.6} },
+      { d:'+70% damage', m:{dmg:1.7} },
+      { d:'+90% damage', m:{dmg:1.9} } ]},
+    { name:'🌋 Bigger Blast', tiers:[
+      { d:'+30% blast radius', m:{splash:1.3} },
+      { d:'+35% blast radius', m:{splash:1.35} },
+      { d:'Full damage across whole blast', m:{splash:1.2, splashFull:1} } ]},
+    { name:'⚙️ Fast Reload', tiers:[
+      { d:'+35% fire rate', m:{rate:1.35} },
+      { d:'+40% fire rate', m:{rate:1.4} },
+      { d:'+50% fire rate', m:{rate:1.5} } ]},
+  ],
+  frost: [
+    { name:'🧊 Deep Freeze', tiers:[
+      { d:'Slow 15% stronger', m:{slowMul:0.85} },
+      { d:'Slow 20% stronger', m:{slowMul:0.8} },
+      { d:'Slow 25% stronger', m:{slowMul:0.75} } ]},
+    { name:'⏳ Lasting Chill', tiers:[
+      { d:'+1s slow, +10% range', m:{slowT:1, range:1.1} },
+      { d:'+1.2s slow, +10% range', m:{slowT:1.2, range:1.1} },
+      { d:'+1.5s slow, +15% range', m:{slowT:1.5, range:1.15} } ]},
+    { name:'💎 Shatter', tiers:[
+      { d:'Damage ×2', m:{dmg:2} },
+      { d:'Damage ×2', m:{dmg:2} },
+      { d:'Damage ×2.2', m:{dmg:2.2} } ]},
+  ],
+  sniper: [
+    { name:'💥 Caliber', tiers:[
+      { d:'+70% damage', m:{dmg:1.7} },
+      { d:'+80% damage', m:{dmg:1.8} },
+      { d:'Damage ×2', m:{dmg:2} } ]},
+    { name:'🎯 Deadeye', tiers:[
+      { d:'Rounds ignore armor', m:{pierce:1} },
+      { d:'25% chance to crit for ×2.5', m:{critC:0.25, critM:2.5} },
+      { d:'40% crit chance, crits ×3', m:{critC:0.15, critM:3} } ]},
+    { name:'🔭 Spotter', tiers:[
+      { d:'+15% range, +25% fire rate', m:{range:1.15, rate:1.25} },
+      { d:'+15% range, +30% fire rate', m:{range:1.15, rate:1.3} },
+      { d:'+20% range, +35% fire rate', m:{range:1.2, rate:1.35} } ]},
+  ],
+  tesla: [
+    { name:'💥 High Voltage', tiers:[
+      { d:'+65% damage', m:{dmg:1.65} },
+      { d:'+75% damage', m:{dmg:1.75} },
+      { d:'+90% damage', m:{dmg:1.9} } ]},
+    { name:'🔗 Conductivity', tiers:[
+      { d:'+1 chain jump, arcs lose less power', m:{chain:1, decayAdd:0.06} },
+      { d:'+1 chain jump, arcs lose less power', m:{chain:1, decayAdd:0.06} },
+      { d:'+2 chain jumps, arcs barely weaken', m:{chain:2, decayAdd:0.08} } ]},
+    { name:'🔋 Capacitors', tiers:[
+      { d:'+35% fire rate', m:{rate:1.35} },
+      { d:'+40% fire rate', m:{rate:1.4} },
+      { d:'+50% fire rate', m:{rate:1.5} } ]},
+  ],
+  poison: [
+    { name:'🦠 Virulence', tiers:[
+      { d:'+70% poison damage', m:{dotDps:1.7} },
+      { d:'+80% poison damage', m:{dotDps:1.8} },
+      { d:'Poison damage ×2', m:{dotDps:2} } ]},
+    { name:'⏳ Lingering Toxin', tiers:[
+      { d:'+1.5s poison, +30% impact damage', m:{dotT:1.5, dmg:1.3} },
+      { d:'+2s poison, +30% impact damage', m:{dotT:2, dmg:1.3} },
+      { d:'+2.5s poison, +40% impact damage', m:{dotT:2.5, dmg:1.4} } ]},
+    { name:'🧪 Corrosion', tiers:[
+      { d:'Each hit melts 1 armor permanently', m:{shred:1} },
+      { d:'Each hit melts 2 more armor', m:{shred:2} },
+      { d:'Each hit melts 3 more armor', m:{shred:3} } ]},
+  ],
+  missile: [
+    { name:'💥 Warheads', tiers:[
+      { d:'+60% damage', m:{dmg:1.6} },
+      { d:'+75% damage', m:{dmg:1.75} },
+      { d:'+90% damage', m:{dmg:1.9} } ]},
+    { name:'🎆 Cluster', tiers:[
+      { d:'+25% blast radius', m:{splash:1.25} },
+      { d:'+30% blast radius', m:{splash:1.3} },
+      { d:'Fires a second missile per volley', m:{multi:2} } ]},
+    { name:'📡 Guidance', tiers:[
+      { d:'+30% fire rate, +10% range', m:{rate:1.3, range:1.1} },
+      { d:'+35% fire rate, +10% range', m:{rate:1.35, range:1.1} },
+      { d:'+40% fire rate, +15% range', m:{rate:1.4, range:1.15} } ]},
+  ],
+};
+
+function towerStats(tw){
+  const b = TOWER_TYPES[tw.type];
+  const s = { dmg:b.dmg, range:b.range, rate:b.rate, splash:b.splash||0,
+    chain:b.chain||0, chainDecay:0.72, slowF:b.slowF||0, slowT:b.slowT||0,
+    dotDps:b.dotDps||0, dotT:b.dotT||0, pierce:false, splashFull:false,
+    critC:0, critM:1, shred:0, multi:1 };
+  const defs = UPGRADE_PATHS[tw.type];
+  const tiers = tw.paths || [0,0,0];
+  for (let i = 0; i < 3; i++){
+    for (let t = 0; t < tiers[i]; t++){
+      const m = defs[i].tiers[t].m;
+      if (m.dmg) s.dmg *= m.dmg;
+      if (m.rate) s.rate *= m.rate;
+      if (m.range) s.range *= m.range;
+      if (m.splash) s.splash *= m.splash;
+      if (m.dotDps) s.dotDps *= m.dotDps;
+      if (m.slowMul) s.slowF = Math.max(0.2, s.slowF * m.slowMul);
+      if (m.slowT) s.slowT += m.slowT;
+      if (m.dotT) s.dotT += m.dotT;
+      if (m.chain) s.chain += m.chain;
+      if (m.decayAdd) s.chainDecay = Math.min(0.92, s.chainDecay + m.decayAdd);
+      if (m.shred) s.shred += m.shred;
+      if (m.critC) s.critC += m.critC;
+      if (m.critM) s.critM = Math.max(s.critM, m.critM);
+      if (m.pierce) s.pierce = true;
+      if (m.splashFull) s.splashFull = true;
+      if (m.multi) s.multi = m.multi;
+    }
+  }
+  return s;
 }
-function upgradeCost(type, level){ // cost to go level -> level+1
-  return Math.round(TOWER_TYPES[type].cost * [0.8, 1.3, 2.1][level-1]);
-}
+function pathCost(type, tier){ return Math.round(TOWER_TYPES[type].cost * TIER_COST[tier]); }
+function pathLocked(tw, i){ return tw.paths[i] === 0 && tw.paths.filter(x => x > 0).length >= 2; }
 
 /* ---------- enemy definitions ---------- */
 const ENEMY_TYPES = {
@@ -368,13 +514,15 @@ function damageEnemy(e, dmg, opts = {}){
 function applySlow(e, f, t){ if (f < e.slowF || e.slowT <= 0) e.slowF = f; e.slowT = Math.max(e.slowT, t); }
 function applyDot(e, dps, t){ e.dotDps = Math.max(e.dotDps, dps); e.dotT = Math.max(e.dotT, t); }
 
-function splashDamage(x, y, radius, dmg, primary){
+function splashDamage(x, y, radius, dmg, primary, falloff){
   for (const e of enemies){
     if (e.dead) continue;
     const d = Math.hypot(e.x-x, e.y-y);
-    if (d <= radius + e.r) damageEnemy(e, e === primary ? dmg : dmg*0.65);
+    if (d <= radius + e.r) damageEnemy(e, e === primary ? dmg : dmg*falloff);
   }
 }
+
+function shredArmor(e, amt){ if (amt) e.armor = Math.max(0, e.armor - amt); }
 
 function burst(x, y, color, n){
   for (let i = 0; i < n; i++){
@@ -384,10 +532,11 @@ function burst(x, y, color, n){
 }
 
 /* ---------- tower firing ---------- */
-function pickTarget(tw, st){
+function pickTarget(tw, st, exclude){
   let bestE = null, bestV = -Infinity;
   for (const e of enemies){
     if (e.dead) continue;
+    if (exclude && exclude.has(e)) continue;
     if (Math.hypot(e.x-tw.x, e.y-tw.y) > st.range) continue;
     let v;
     if (tw.mode === 'strong') v = e.hp;
@@ -403,8 +552,12 @@ function fire(tw, st, target){
   tw.angle = Math.atan2(target.y-tw.y, target.x-tw.x);
   tw.flash = 0.08;
   if (b.hitscan){
-    damageEnemy(target, st.dmg);
-    effects.push({ kind:'tracer', x1:tw.x, y1:tw.y, x2:target.x, y2:target.y, t:0.1, color:b.color });
+    let dmg = st.dmg, crit = false;
+    if (st.critC > 0 && Math.random() < st.critC){ dmg *= st.critM; crit = true; }
+    damageEnemy(target, dmg, { ignoreArmor: st.pierce });
+    shredArmor(target, st.shred);
+    effects.push({ kind:'tracer', x1:tw.x, y1:tw.y, x2:target.x, y2:target.y, t:0.1, color: crit ? '#ffffff' : b.color });
+    if (crit) floaters.push({ x:target.x, y:target.y-22, text:'CRIT!', t:0.7, color:'#ffe95a' });
     sfx.shoot();
     return;
   }
@@ -414,7 +567,7 @@ function fire(tw, st, target){
     for (let i = 0; i < st.chain && cur; i++){
       damageEnemy(cur, d);
       pts.push({ x:cur.x, y:cur.y });
-      hit.add(cur); d *= 0.72;
+      hit.add(cur); d *= st.chainDecay;
       let next = null, nd = 110;
       for (const e of enemies){
         if (e.dead || hit.has(e)) continue;
@@ -427,13 +580,23 @@ function fire(tw, st, target){
     sfx.shoot();
     return;
   }
-  projectiles.push({
-    x:tw.x, y:tw.y, target, tx:target.x, ty:target.y,
+  const launch = t => projectiles.push({
+    x:tw.x, y:tw.y, target:t, tx:t.x, ty:t.y,
     speed: b.projSpeed, dmg: st.dmg, splash: st.splash,
     slowF: st.slowF, slowT: st.slowT, dotDps: st.dotDps, dotT: st.dotT,
+    pierce: st.pierce, shred: st.shred, splashFull: st.splashFull,
     homing: !!b.homing, color: b.color, type: tw.type,
     trail: tw.type === 'missile',
   });
+  launch(target);
+  if (st.multi > 1){
+    const excl = new Set([target]);
+    for (let k = 1; k < st.multi; k++){
+      const t2 = pickTarget(tw, st, excl) || target;
+      excl.add(t2);
+      launch(t2);
+    }
+  }
   sfx.shoot();
 }
 
@@ -485,7 +648,7 @@ function update(dt){
     tw.cd -= dt;
     if (tw.flash > 0) tw.flash -= dt;
     if (tw.cd <= 0){
-      const st = towerStats(tw.type, tw.level);
+      const st = towerStats(tw);
       const t = pickTarget(tw, st);
       if (t){ fire(tw, st, t); tw.cd = 1/st.rate; }
       else tw.cd = 0.05;
@@ -503,11 +666,12 @@ function update(dt){
       p.hit = true;
       const primary = (p.target && !p.target.dead) ? p.target : null;
       if (p.splash){
-        splashDamage(p.tx, p.ty, p.splash, p.dmg, primary);
+        splashDamage(p.tx, p.ty, p.splash, p.dmg, primary, p.splashFull ? 1 : 0.65);
         effects.push({ kind:'blast', x:p.tx, y:p.ty, r:p.splash, t:0.22, color:p.color });
         sfx.boom();
       } else if (primary){
-        damageEnemy(primary, p.dmg);
+        damageEnemy(primary, p.dmg, { ignoreArmor: p.pierce });
+        shredArmor(primary, p.shred);
         if (p.slowF) applySlow(primary, p.slowF, p.slowT);
         if (p.dotDps) applyDot(primary, p.dotDps, p.dotT);
       } else if (p.slowF || p.dotDps){
@@ -515,7 +679,8 @@ function update(dt){
         for (const e of enemies){
           if (e.dead) continue;
           if (Math.hypot(e.x-p.tx, e.y-p.ty) < 26 + e.r){
-            damageEnemy(e, p.dmg);
+            damageEnemy(e, p.dmg, { ignoreArmor: p.pierce });
+            shredArmor(e, p.shred);
             if (p.slowF) applySlow(e, p.slowF, p.slowT);
             if (p.dotDps) applyDot(e, p.dotDps, p.dotT);
             break;
@@ -603,27 +768,27 @@ function draw(){
     const [c, r] = hoverCell;
     const ok = canPlace(c, r) && money >= TOWER_TYPES[placing].cost;
     const x = (c+0.5)*TILE, y = (r+0.5)*TILE;
-    const st = towerStats(placing, 1);
+    const st = towerStats({ type: placing, paths: [0,0,0] });
     ctx.beginPath(); ctx.arc(x, y, st.range, 0, Math.PI*2);
     ctx.fillStyle = ok ? 'rgba(90,200,250,0.08)' : 'rgba(255,107,107,0.08)';
     ctx.fill();
     ctx.strokeStyle = ok ? 'rgba(90,200,250,0.5)' : 'rgba(255,107,107,0.5)';
     ctx.setLineDash([6,4]); ctx.stroke(); ctx.setLineDash([]);
     ctx.globalAlpha = 0.7;
-    drawTowerShape(x, y, placing, 1, 0);
+    drawTowerShape(x, y, placing, [0,0,0], 0);
     ctx.globalAlpha = 1;
   }
 
   // selected tower range
   if (selected && towers.includes(selected)){
-    const st = towerStats(selected.type, selected.level);
+    const st = towerStats(selected);
     ctx.beginPath(); ctx.arc(selected.x, selected.y, st.range, 0, Math.PI*2);
     ctx.fillStyle = 'rgba(90,200,250,0.07)'; ctx.fill();
     ctx.strokeStyle = 'rgba(90,200,250,0.45)'; ctx.setLineDash([6,4]); ctx.stroke(); ctx.setLineDash([]);
   }
 
   // towers
-  for (const tw of towers) drawTowerShape(tw.x, tw.y, tw.type, tw.level, tw.angle, tw.flash > 0);
+  for (const tw of towers) drawTowerShape(tw.x, tw.y, tw.type, tw.paths, tw.angle, tw.flash > 0);
 
   // enemies
   let boss = null;
@@ -719,7 +884,7 @@ function draw(){
   }
 }
 
-function drawTowerShape(x, y, type, level, angle, flash){
+function drawTowerShape(x, y, type, pathTiers, angle, flash){
   const b = TOWER_TYPES[type];
   // base
   ctx.beginPath(); ctx.arc(x, y, 17, 0, Math.PI*2);
@@ -735,10 +900,17 @@ function drawTowerShape(x, y, type, level, angle, flash){
   ctx.beginPath(); ctx.arc(x, y, 9, 0, Math.PI*2);
   ctx.fillStyle = b.color; ctx.fill();
   ctx.strokeStyle = 'rgba(0,0,0,0.4)'; ctx.stroke();
-  // level pips
-  ctx.fillStyle = '#ffd166';
-  for (let i = 0; i < level-1; i++){
-    ctx.beginPath(); ctx.arc(x - 12 + i*8, y + 20, 2.5, 0, Math.PI*2); ctx.fill();
+  // upgrade pips, colored per path
+  const total = pathTiers[0] + pathTiers[1] + pathTiers[2];
+  if (total > 0){
+    let px = x - (total-1)*3;
+    for (let i = 0; i < 3; i++){
+      ctx.fillStyle = PATH_COLORS[i];
+      for (let t = 0; t < pathTiers[i]; t++){
+        ctx.beginPath(); ctx.arc(px, y + 20, 2.5, 0, Math.PI*2); ctx.fill();
+        px += 6;
+      }
+    }
   }
 }
 
@@ -771,7 +943,7 @@ canvas.addEventListener('click', ev => {
     if (canPlace(c, r) && money >= cost){
       money -= cost;
       towers.push({ type:placing, c, r, x:(c+0.5)*TILE, y:(r+0.5)*TILE,
-        level:1, cd:0, angle:-Math.PI/2, flash:0, invested:cost, mode:'first' });
+        paths:[0,0,0], cd:0, angle:-Math.PI/2, flash:0, invested:cost, mode:'first' });
       sfx.place();
       if (money < cost) setPlacing(null); // keep placing while affordable
       updateTowerGrid();
@@ -830,32 +1002,58 @@ function updateSelCard(){
   const card = $('selCard');
   if (!selected || !towers.includes(selected)){ card.style.display = 'none'; return; }
   card.style.display = '';
-  const tw = selected, b = TOWER_TYPES[tw.type], st = towerStats(tw.type, tw.level);
+  const tw = selected, b = TOWER_TYPES[tw.type], st = towerStats(tw);
   $('selName').textContent = `${b.icon} ${b.name}`;
   $('selDesc').textContent = b.desc;
-  $('selLvl').textContent = tw.level >= MAX_TOWER_LEVEL ? `${tw.level} (MAX)` : tw.level;
   $('selDmg').textContent = Math.round(st.dmg) + (st.dotDps ? ` +${Math.round(st.dotDps)}/s` : '');
   $('selRange').textContent = Math.round(st.range);
   $('selRate').textContent = st.rate.toFixed(2) + '/s';
+  const spec = [];
+  if (st.splash) spec.push(`splash ${Math.round(st.splash)}`);
+  if (st.splashFull) spec.push('no falloff');
+  if (st.chain) spec.push(`chains ×${st.chain}`);
+  if (st.slowF) spec.push(`slows to ${Math.round(st.slowF*100)}%`);
+  if (st.pierce) spec.push('ignores armor');
+  if (st.critC) spec.push(`${Math.round(st.critC*100)}% crit ×${st.critM}`);
+  if (st.shred) spec.push(`melts ${st.shred} armor/hit`);
+  if (st.multi > 1) spec.push(`${st.multi} missiles`);
+  $('selSpec').textContent = spec.join(', ') || '—';
   $('selTarget').textContent = tw.mode;
-  const up = $('upgradeBtn');
-  if (tw.level >= MAX_TOWER_LEVEL){ up.textContent = 'MAX'; up.disabled = true; }
-  else {
-    const c = upgradeCost(tw.type, tw.level);
-    up.textContent = `⬆ ${c}`;
-    up.disabled = money < c;
+  const defs = UPGRADE_PATHS[tw.type];
+  for (let i = 0; i < 3; i++){
+    const tier = tw.paths[i], locked = pathLocked(tw, i);
+    $('p'+i+'name').textContent = defs[i].name;
+    $('p'+i+'pips').textContent = '●'.repeat(tier) + '○'.repeat(3-tier);
+    $('p'+i+'pips').style.color = tier > 0 ? PATH_COLORS[i] : 'var(--dim)';
+    $('pr'+i).classList.toggle('locked', locked);
+    const btn = $('p'+i+'btn'), desc = $('p'+i+'desc');
+    if (locked){
+      desc.textContent = 'Locked — max 2 paths per tower';
+      btn.textContent = '🔒 Locked'; btn.disabled = true;
+    } else if (tier >= 3){
+      desc.textContent = defs[i].tiers[2].d;
+      btn.textContent = 'MAX'; btn.disabled = true;
+    } else {
+      const c = pathCost(tw.type, tier);
+      desc.textContent = 'Next: ' + defs[i].tiers[tier].d;
+      btn.textContent = `⬆ Upgrade — 💰${c}`;
+      btn.disabled = money < c;
+    }
   }
   $('sellBtn').textContent = `Sell ${Math.round(tw.invested*0.7)}`;
 }
 
-$('upgradeBtn').addEventListener('click', () => {
-  const tw = selected;
-  if (!tw || tw.level >= MAX_TOWER_LEVEL) return;
-  const c = upgradeCost(tw.type, tw.level);
-  if (money < c) return;
-  money -= c; tw.level++; tw.invested += c;
-  sfx.upgrade(); updateSelCard(); updateTowerGrid();
-});
+for (let i = 0; i < 3; i++){
+  $('p'+i+'btn').addEventListener('click', () => {
+    const tw = selected;
+    if (!tw || !towers.includes(tw)) return;
+    if (pathLocked(tw, i) || tw.paths[i] >= 3) return;
+    const c = pathCost(tw.type, tw.paths[i]);
+    if (money < c) return;
+    money -= c; tw.paths[i]++; tw.invested += c;
+    sfx.upgrade(); updateSelCard(); updateTowerGrid();
+  });
+}
 $('sellBtn').addEventListener('click', () => {
   const tw = selected;
   if (!tw) return;
