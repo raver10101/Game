@@ -103,9 +103,21 @@
     background: rgba(10, 13, 20, 0.82); border-radius: 10px; z-index: 5; text-align: center;
   }
   #overlay.show { display: flex; }
-  #overlay .box { padding: 30px; }
-  #overlay h2 { font-size: 34px; margin-bottom: 8px; }
-  #overlay p { color: var(--dim); margin-bottom: 18px; font-size: 15px; }
+  #overlay .box { padding: 24px; max-width: 96%; max-height: 96%; overflow-y: auto; }
+  #overlay h2 { font-size: 32px; margin-bottom: 6px; }
+  #overlay p { color: var(--dim); margin-bottom: 16px; font-size: 14px; }
+  #mapGrid { display: grid; grid-template-columns: repeat(5, 1fr); gap: 10px; max-width: 800px; }
+  @media (max-width: 760px) { #mapGrid { grid-template-columns: repeat(3, 1fr); } }
+  .mapCard {
+    display: flex; flex-direction: column; align-items: center; gap: 5px; padding: 8px;
+    background: var(--panel2); border: 1px solid var(--line); border-radius: 8px;
+    cursor: pointer; transition: border-color .15s, transform .1s;
+  }
+  .mapCard:hover { border-color: var(--accent); transform: translateY(-2px); }
+  .mapCard canvas { display: block; width: 100%; border-radius: 4px; }
+  .mapCard span { font-size: 12px; font-weight: 600; white-space: nowrap; }
+  #modeWrap { display: flex; flex-direction: column; align-items: center; }
+  #backToMaps, #resumeBtn { margin-top: 12px; font-size: 13px; }
   #modeBtns { display: flex; flex-direction: column; gap: 10px; min-width: 320px; }
   .modeBtn { display: flex; flex-direction: column; align-items: center; gap: 3px; padding: 12px 18px; }
   .modeBtn b { font-size: 17px; }
@@ -138,6 +150,7 @@
   <div class="stat"><small>Best:</small> <span id="best">0</span></div>
   <div class="spacer"></div>
   <label class="chk"><input type="checkbox" id="autoChk"> auto-start</label>
+  <button id="mapBtn" title="choose map">🗺️</button>
   <button id="speedBtn" title="toggle game speed">▶ 1×</button>
   <button id="muteBtn" title="toggle sound">🔊</button>
   <button id="startBtn" class="primary">Start Wave 1</button>
@@ -150,12 +163,17 @@
     <div id="overlay" class="show">
       <div class="box">
         <h2 id="ovTitle">🏰 Tower Defense</h2>
-        <p id="ovText">Choose your difficulty</p>
-        <div id="modeBtns">
-          <button class="modeBtn" data-mode="easy"><b>🌿 Easy</b><small>30 waves · cheap towers · weaker enemies · 20 ❤️</small></button>
-          <button class="modeBtn" data-mode="medium"><b>⚔️ Medium</b><small>40 waves · tougher enemies · standard prices · 20 ❤️</small></button>
-          <button class="modeBtn" data-mode="hard"><b>💀 Hard</b><small>50 waves · brutal enemies · pricey towers · only 10 ❤️</small></button>
+        <p id="ovText">Choose your map</p>
+        <div id="mapGrid"></div>
+        <div id="modeWrap" style="display:none">
+          <div id="modeBtns">
+            <button class="modeBtn" data-mode="easy"><b>🌿 Easy</b><small>30 waves · cheap towers · weaker enemies · 20 ❤️</small></button>
+            <button class="modeBtn" data-mode="medium"><b>⚔️ Medium</b><small>40 waves · tougher enemies · standard prices · 20 ❤️</small></button>
+            <button class="modeBtn" data-mode="hard"><b>💀 Hard</b><small>50 waves · brutal enemies · pricey towers · only 10 ❤️</small></button>
+          </div>
+          <button id="backToMaps">🗺️ Choose another map</button>
         </div>
+        <button id="resumeBtn" style="display:none">▶ Resume current game</button>
       </div>
     </div>
   </div>
@@ -204,6 +222,8 @@
       <div id="legend">
         <b>Enemies:</b> grunts, fast runners, armored brutes, shielded heavies.
         Armor reduces each hit — <b>poison ignores armor</b>.<br>
+        🪨 Rocks and 🏚️ buildings <b>block line of sight</b> and can't be built on —
+        but 💣 Cannon and 🚀 Missile <b>lob over them</b>.<br>
         <b>Bosses</b> appear every 10th wave: huge HP, regeneration, and they
         cost <b>10 lives</b> if they leak.<br>
         Clear <b>every wave</b> to win — 30 on Easy, 40 on Medium, 50 on Hard.
@@ -256,35 +276,104 @@ const TILE = 48, COLS = 20, ROWS = 13;
 const canvas = document.getElementById('game');
 const ctx = canvas.getContext('2d');
 
-const WAYPOINTS_GRID = [[-1,2],[16,2],[16,5],[3,5],[3,8],[12,8],[12,11],[20,11]];
-const WAYPOINTS = WAYPOINTS_GRID.map(([c,r]) => ({ x:(c+0.5)*TILE, y:(r+0.5)*TILE }));
+const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
 
-const pathCells = new Set();
-for (let i = 0; i < WAYPOINTS_GRID.length-1; i++){
-  const [c1,r1] = WAYPOINTS_GRID[i], [c2,r2] = WAYPOINTS_GRID[i+1];
-  if (r1 === r2){
-    for (let c = Math.min(c1,c2); c <= Math.max(c1,c2); c++)
-      if (c >= 0 && c < COLS) pathCells.add(c+','+r1);
-  } else {
-    for (let r = Math.min(r1,r2); r <= Math.max(r1,r2); r++)
-      if (r >= 0 && r < ROWS) pathCells.add(c1+','+r);
+/* ---------- maps ----------
+   wp: waypoint grid coords; first/last may sit off-board (edge spawns) or
+   on-board (the castle sits inside the map). obs: cells with scenery that
+   blocks tower placement AND line of sight (indirect-fire towers ignore it). */
+const OBSTACLE_ICONS = { rock:'🪨', tree:'🌲', house:'🏚️', statue:'🗿', temple:'🏛️' };
+const MAPS = [
+  { name:'The Serpent', icon:'🐍',
+    wp:[[-1,2],[16,2],[16,5],[3,5],[3,8],[12,8],[12,11],[20,11]],
+    obs:[[7,3,'rock'],[12,6,'tree'],[8,10,'rock'],[17,8,'tree'],[1,10,'rock'],[18,4,'house']] },
+  { name:'Long March', icon:'🛤️',
+    wp:[[-1,1],[18,1],[18,11],[1,11],[1,4],[10,4]],
+    obs:[[6,7,'tree'],[9,8,'rock'],[13,6,'house'],[4,6,'tree'],[15,3,'rock'],[12,9,'tree']] },
+  { name:'Switchback', icon:'⛰️',
+    wp:[[3,-1],[3,10],[7,10],[7,2],[11,2],[11,10],[15,10],[15,2],[20,2]],
+    obs:[[1,4,'rock'],[5,5,'tree'],[9,6,'rock'],[13,5,'tree'],[17,7,'house'],[18,10,'rock'],[1,12,'tree']] },
+  { name:'The Gauntlet', icon:'⚔️',
+    wp:[[-1,6],[20,6]],
+    obs:[[3,5,'house'],[6,7,'house'],[9,5,'rock'],[12,7,'house'],[15,5,'tree'],[2,7,'rock'],[4,4,'tree'],
+         [7,4,'rock'],[10,8,'tree'],[13,4,'house'],[16,8,'rock'],[18,5,'tree'],[8,9,'house'],[11,2,'rock']] },
+  { name:'Riverbend', icon:'🏞️',
+    wp:[[-1,2],[17,2],[17,10],[2,10],[2,13]],
+    obs:[[5,5,'tree'],[9,6,'rock'],[13,5,'tree'],[7,8,'house'],[15,7,'rock'],[3,4,'tree']] },
+  { name:'The Citadel', icon:'🏛️',
+    wp:[[10,-1],[10,3],[15,3],[15,9],[5,9],[5,6],[8,6]],
+    obs:[[8,4,'temple'],[12,5,'statue'],[13,7,'house'],[7,7,'rock'],[2,3,'tree'],[17,6,'tree'],[3,11,'rock'],[12,11,'tree']] },
+  { name:'Coastal Cliffs', icon:'🌊',
+    wp:[[20,3],[5,3],[5,11],[14,11],[14,7],[20,7]],
+    obs:[[8,5,'rock'],[11,6,'rock'],[9,9,'rock'],[16,5,'rock'],[17,9,'rock'],[2,6,'tree'],[12,4,'tree']] },
+  { name:'Canyon Run', icon:'🏜️',
+    wp:[[6,13],[6,4],[13,4],[13,13]],
+    obs:[[4,6,'rock'],[4,9,'rock'],[8,7,'rock'],[11,7,'rock'],[15,6,'rock'],[15,9,'rock'],
+         [9,2,'tree'],[10,10,'house'],[2,3,'tree'],[17,3,'tree']] },
+  { name:'Labyrinth', icon:'🌀',
+    wp:[[-1,11],[4,11],[4,2],[8,2],[8,11],[12,11],[12,2],[16,2],[16,11],[20,11]],
+    obs:[[2,5,'house'],[6,6,'statue'],[10,6,'house'],[14,6,'statue'],[18,5,'house'],[6,0,'tree'],[14,0,'tree']] },
+  { name:'The Spiral', icon:'🐚',
+    wp:[[-1,1],[18,1],[18,11],[1,11],[1,3],[15,3],[15,9],[4,9],[4,5],[12,5],[12,7],[8,7]],
+    obs:[[6,7,'tree'],[10,10,'rock'],[17,6,'tree'],[2,12,'rock']] },
+];
+
+let mapIdx = 0, map = MAPS[0];
+let WAYPOINTS = [], pathCells = new Set();
+let obstacles = [], obstacleCells = new Set(), obstacleRects = [];
+
+function computePathCells(wp){
+  const cells = new Set();
+  for (let i = 0; i < wp.length-1; i++){
+    const [c1,r1] = wp[i], [c2,r2] = wp[i+1];
+    if (r1 === r2){
+      for (let c = Math.min(c1,c2); c <= Math.max(c1,c2); c++)
+        if (c >= 0 && c < COLS) cells.add(c+','+r1);
+    } else {
+      for (let r = Math.min(r1,r2); r <= Math.max(r1,r2); r++)
+        if (r >= 0 && r < ROWS) cells.add(c1+','+r);
+    }
   }
+  return cells;
 }
-const SEG_LEN = [], TOTAL_PATH_LEN = (() => {
-  let t = 0;
-  for (let i = 0; i < WAYPOINTS.length-1; i++){
-    const d = Math.hypot(WAYPOINTS[i+1].x-WAYPOINTS[i].x, WAYPOINTS[i+1].y-WAYPOINTS[i].y);
-    SEG_LEN.push(d); t += d;
+
+function loadMap(i){
+  mapIdx = i; map = MAPS[i];
+  WAYPOINTS = map.wp.map(([c,r]) => ({ x:(c+0.5)*TILE, y:(r+0.5)*TILE }));
+  pathCells = computePathCells(map.wp);
+  obstacles = map.obs.map(([c,r,t]) => ({ c, r, t }));
+  obstacleCells = new Set(obstacles.map(o => o.c+','+o.r));
+  const inset = 6; // grazing shots along an obstacle's edge still connect
+  obstacleRects = obstacles.map(o => ({ x:o.c*TILE+inset, y:o.r*TILE+inset, w:TILE-2*inset, h:TILE-2*inset }));
+}
+
+/* line of sight: Liang-Barsky segment-vs-rect */
+function segHitsRect(x1, y1, x2, y2, rx, ry, rw, rh){
+  const dx = x2-x1, dy = y2-y1;
+  const p = [-dx, dx, -dy, dy], q = [x1-rx, rx+rw-x1, y1-ry, ry+rh-y1];
+  let t0 = 0, t1 = 1;
+  for (let i = 0; i < 4; i++){
+    if (p[i] === 0){ if (q[i] < 0) return false; }
+    else {
+      const t = q[i] / p[i];
+      if (p[i] < 0){ if (t > t1) return false; if (t > t0) t0 = t; }
+      else { if (t < t0) return false; if (t < t1) t1 = t; }
+    }
   }
-  return t;
-})();
+  return true;
+}
+function hasLoS(x1, y1, x2, y2){
+  for (const r of obstacleRects)
+    if (segHitsRect(x1, y1, x2, y2, r.x, r.y, r.w, r.h)) return false;
+  return true;
+}
 
 /* ---------- tower definitions ---------- */
 const TOWER_TYPES = {
   gun:     { name:'Gunner',  icon:'🔫', cost:50,  dmg:8,   range:110, rate:2.6, projSpeed:520, color:'#8fb4ff',
              desc:'Cheap rapid-fire bullets. Solid all-rounder.' },
-  cannon:  { name:'Cannon',  icon:'💣', cost:90,  dmg:24,  range:125, rate:0.8, projSpeed:340, splash:55, color:'#f0a05a',
-             desc:'Lobs shells with splash damage. Great vs groups.' },
+  cannon:  { name:'Cannon',  icon:'💣', cost:90,  dmg:24,  range:125, rate:0.8, projSpeed:340, splash:55, indirect:true, color:'#f0a05a',
+             desc:'Lobs splash shells clean over buildings. Great vs groups.' },
   frost:   { name:'Frost',   icon:'❄️', cost:70,  dmg:5,   range:105, rate:1.3, projSpeed:400, slowF:0.55, slowT:2.0, color:'#7fe3ff',
              desc:'Chills enemies, slowing them down. Low damage.' },
   sniper:  { name:'Sniper',  icon:'🎯', cost:120, dmg:62,  range:235, rate:0.45, hitscan:true, color:'#d6ff8f',
@@ -293,8 +382,8 @@ const TOWER_TYPES = {
              desc:'Lightning arcs between several enemies.' },
   poison:  { name:'Poison',  icon:'☠️', cost:100, dmg:6,   range:110, rate:1.0, projSpeed:380, dotDps:14, dotT:3, color:'#a4f77a',
              desc:'Toxic globs deal damage over time. Ignores armor.' },
-  missile: { name:'Missile', icon:'🚀', cost:180, dmg:52,  range:175, rate:0.6, projSpeed:300, splash:75, homing:true, color:'#ff8f9e',
-             desc:'Homing rockets with a big blast radius.' },
+  missile: { name:'Missile', icon:'🚀', cost:180, dmg:52,  range:175, rate:0.6, projSpeed:300, splash:75, homing:true, indirect:true, color:'#ff8f9e',
+             desc:'Homing rockets that arc over buildings. Big blast.' },
 };
 const TOWER_KEYS = Object.keys(TOWER_TYPES);
 
@@ -490,17 +579,20 @@ let waveActive, spawnQueue, spawnTimer, gameOver, autoTimer;
 let placing = null, selected = null, hoverCell = null;
 let speedMul = 1, paused = false;
 
+function bestKey(){ return `td_best_m${mapIdx}_${modeKey}`; }
+let pendingMap = 0;
+
 function resetGame(k){
-  if (k){ modeKey = k; mode = MODES[k]; }
+  if (k){ modeKey = k; mode = MODES[k]; loadMap(pendingMap); }
   awaitingMode = false;
-  best = parseInt(store.get('td_best_' + modeKey) || '0', 10) || 0;
+  best = parseInt(store.get(bestKey()) || '0', 10) || 0;
   money = 220; lives = mode.lives; wave = 0;
   towers = []; enemies = []; projectiles = []; effects = []; particles = []; floaters = [];
   waveActive = false; spawnQueue = []; spawnTimer = 0; gameOver = false; autoTimer = -1;
   placing = null; selected = null;
-  document.getElementById('modeLabel').textContent = `${mode.icon} ${mode.name}`;
+  document.getElementById('modeLabel').textContent = `${map.icon} ${map.name} · ${mode.icon} ${mode.name}`;
   document.getElementById('overlay').classList.remove('show');
-  if (k) toast(`${mode.icon} ${mode.name} — survive all ${mode.waves} waves!`, true);
+  if (k) toast(`${map.icon} ${map.name} — ${mode.name}: survive all ${mode.waves} waves!`, true);
   updateHud(); updateSelCard(); updateTowerGrid();
 }
 
@@ -508,7 +600,55 @@ function showModeSelect(title, text){
   awaitingMode = true;
   document.getElementById('ovTitle').textContent = title;
   document.getElementById('ovText').textContent = text;
+  document.getElementById('mapGrid').style.display = 'none';
+  document.getElementById('modeWrap').style.display = 'flex';
+  document.getElementById('resumeBtn').style.display = 'none';
   document.getElementById('overlay').classList.add('show');
+}
+
+function showMapSelect(){
+  awaitingMode = true;
+  document.getElementById('ovTitle').textContent = '🗺️ Choose Your Map';
+  document.getElementById('ovText').textContent =
+    'Rocks and buildings block tower line of sight — 💣 cannons and 🚀 missiles lob over them';
+  document.getElementById('mapGrid').style.display = 'grid';
+  document.getElementById('modeWrap').style.display = 'none';
+  document.getElementById('resumeBtn').style.display = (!gameOver && wave > 0) ? '' : 'none';
+  document.getElementById('overlay').classList.add('show');
+}
+
+function buildMapGrid(){
+  const grid = document.getElementById('mapGrid');
+  MAPS.forEach((m, i) => {
+    const card = document.createElement('div');
+    card.className = 'mapCard';
+    const cv = document.createElement('canvas');
+    const s = 7;
+    cv.width = COLS*s; cv.height = ROWS*s;
+    const g = cv.getContext('2d');
+    g.fillStyle = '#131a26'; g.fillRect(0, 0, cv.width, cv.height);
+    g.fillStyle = '#46567a';
+    for (const key of computePathCells(m.wp)){
+      const [c, r] = key.split(',').map(Number);
+      g.fillRect(c*s, r*s, s, s);
+    }
+    for (const [c, r, t] of m.obs){
+      g.fillStyle = t === 'rock' ? '#8a93a6' : t === 'tree' ? '#5da16b' : '#b08a5e';
+      g.fillRect(c*s+1, r*s+1, s-2, s-2);
+    }
+    const [c0, r0] = m.wp[0], [cz, rz] = m.wp[m.wp.length-1];
+    g.fillStyle = '#7ae582'; g.fillRect(clamp(c0,0,COLS-1)*s, clamp(r0,0,ROWS-1)*s, s, s);
+    g.fillStyle = '#ff6b6b'; g.fillRect(clamp(cz,0,COLS-1)*s, clamp(rz,0,ROWS-1)*s, s, s);
+    const label = document.createElement('span');
+    label.textContent = `${m.icon} ${m.name}`;
+    card.appendChild(cv); card.appendChild(label);
+    card.addEventListener('click', () => {
+      ac();
+      pendingMap = i; // applied when a difficulty is picked
+      showModeSelect(`${m.icon} ${m.name}`, 'Choose your difficulty');
+    });
+    grid.appendChild(card);
+  });
 }
 
 /* ---------- entities ---------- */
@@ -566,10 +706,12 @@ function burst(x, y, color, n){
 /* ---------- tower firing ---------- */
 function pickTarget(tw, st, exclude){
   let bestE = null, bestV = -Infinity;
+  const indirect = TOWER_TYPES[tw.type].indirect;
   for (const e of enemies){
     if (e.dead) continue;
     if (exclude && exclude.has(e)) continue;
     if (Math.hypot(e.x-tw.x, e.y-tw.y) > st.range) continue;
+    if (!indirect && !hasLoS(tw.x, tw.y, e.x, e.y)) continue;
     let v;
     if (tw.mode === 'strong') v = e.hp;
     else if (tw.mode === 'last') v = -e.traveled;
@@ -634,7 +776,7 @@ function fire(tw, st, target){
 
 /* ---------- update loop ---------- */
 function update(dt){
-  if (gameOver) return;
+  if (gameOver || awaitingMode) return;
 
   // spawn queue
   if (waveActive && spawnQueue.length){
@@ -739,7 +881,7 @@ function update(dt){
     const bonus = Math.round((25 + wave*7) * mode.bonusMul);
     money += bonus;
     floaters.push({ x:canvas.width/2, y:80, text:`Wave ${wave} cleared! +${bonus} bonus`, t:1.6, color:'#7ae582', big:true });
-    if (wave > best){ best = wave; store.set('td_best_' + modeKey, best); }
+    if (wave > best){ best = wave; store.set(bestKey(), best); }
     if (wave >= mode.waves){
       gameOver = true;
       sfx.upgrade(); sfx.wave();
@@ -794,10 +936,25 @@ function draw(){
     const [c, r] = key.split(',').map(Number);
     ctx.strokeRect(c*TILE+1, r*TILE+1, TILE-2, TILE-2);
   }
-  // start / end markers
+  // start / end markers (any edge, or an interior castle)
   ctx.font = '22px serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-  ctx.fillText('➡️', 18, WAYPOINTS[0].y);
-  ctx.fillText('🏰', W-24, WAYPOINTS[WAYPOINTS.length-1].y);
+  const wpA = WAYPOINTS[0], wpB = WAYPOINTS[1];
+  const sIcon = Math.abs(wpB.x-wpA.x) > Math.abs(wpB.y-wpA.y)
+    ? (wpB.x > wpA.x ? '➡️' : '⬅️') : (wpB.y > wpA.y ? '⬇️' : '⬆️');
+  ctx.fillText(sIcon, clamp(wpA.x, 16, W-16), clamp(wpA.y, 16, H-16));
+  const wpZ = WAYPOINTS[WAYPOINTS.length-1];
+  ctx.fillText('🏰', clamp(wpZ.x, 18, W-18), clamp(wpZ.y, 18, H-18));
+
+  // obstacles: scenery that blocks building and line of sight
+  for (const o of obstacles){
+    const ox = o.c*TILE, oy = o.r*TILE;
+    ctx.fillStyle = '#242e42';
+    ctx.fillRect(ox+3, oy+3, TILE-6, TILE-6);
+    ctx.strokeStyle = '#3a4a68'; ctx.lineWidth = 1.5;
+    ctx.strokeRect(ox+3, oy+3, TILE-6, TILE-6);
+    ctx.font = '26px serif';
+    ctx.fillText(OBSTACLE_ICONS[o.t], ox+TILE/2, oy+TILE/2+2);
+  }
 
   // placement ghost
   if (placing && hoverCell){
@@ -954,6 +1111,7 @@ function drawTowerShape(x, y, type, pathTiers, angle, flash){
 function canPlace(c, r){
   if (c < 0 || c >= COLS || r < 0 || r >= ROWS) return false;
   if (pathCells.has(c+','+r)) return false;
+  if (obstacleCells.has(c+','+r)) return false;
   return !towers.some(t => t.c === c && t.r === r);
 }
 
@@ -1113,6 +1271,12 @@ $('targetBtn').addEventListener('click', () => {
 $('startBtn').addEventListener('click', () => { ac(); startWave(); });
 document.querySelectorAll('.modeBtn').forEach(b =>
   b.addEventListener('click', () => { ac(); resetGame(b.dataset.mode); }));
+$('backToMaps').addEventListener('click', showMapSelect);
+$('mapBtn').addEventListener('click', showMapSelect);
+$('resumeBtn').addEventListener('click', () => {
+  awaitingMode = false;
+  $('overlay').classList.remove('show');
+});
 $('speedBtn').addEventListener('click', () => {
   speedMul = speedMul === 1 ? 2 : (speedMul === 2 ? 3 : 1);
   $('speedBtn').textContent = `▶ ${speedMul}×`;
@@ -1153,8 +1317,10 @@ function frame(now){
   requestAnimationFrame(frame);
 }
 
+buildMapGrid();
+loadMap(0);
 resetGame();
-showModeSelect('🏰 Tower Defense', 'Choose your difficulty');
+showMapSelect();
 requestAnimationFrame(frame);
 </script>
 </body>
