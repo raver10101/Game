@@ -879,17 +879,20 @@ const ENEMY_TYPES = {
   runner: { hp:24,  speed:105, bounty:7,  r:8,  armor:0,  color:'#e0c05a', lives:1 },
   brute:  { hp:150, speed:36,  bounty:16, r:13, armor:3,  color:'#b07ae0', lives:1 },
   shield: { hp:90,  speed:50,  bounty:14, r:11, armor:8,  color:'#7ab8e0', lives:1 },
-  boss:   { hp:1500,speed:27,  bounty:250,r:20, armor:10, color:'#ff5470', lives:10, regen:0.003 },
+  boss:   { hp:1300,speed:27,  bounty:250,r:20, armor:10, color:'#ff5470', lives:10, regen:0.0012 },
 };
 
 function hpMul(lvl){ const m = lvl-1; return 1 + 0.35*m + 0.06*m*m; }
+// bosses scale far more gently than swarms — their HP is concentrated in one
+// target, so it must stay within reach of a focused, upgrade-capped defense
+function bossHpMul(lvl){ const m = lvl-1; return 1 + 0.28*m + 0.008*m*m; }
 function bountyMul(lvl){ return 1 + 0.06*(lvl-1); }
 
 function buildWave(lvl){
   const q = []; // {type, gap seconds before this spawn}
   const gap = Math.max(0.32, 0.75 - lvl*0.012);
   if (lvl % 10 === 0){
-    const nB = Math.max(1, Math.round(lvl/20)); // wave 10 → 1 boss, 30 → 2, 50 → 3...
+    const nB = lvl >= 30 ? 2 : 1; // 1 boss through wave 20, 2 from wave 30 on
     for (let i = 0; i < 6; i++) q.push({ type:'brute', gap: gap });
     for (let i = 0; i < nB; i++) q.push({ type:'boss', gap: 2.2 });
     for (let i = 0; i < 8; i++) q.push({ type:'runner', gap: gap*0.8 });
@@ -1050,7 +1053,7 @@ function buildMapGrid(){
 /* ---------- entities ---------- */
 function spawnEnemy(type){
   const def = ENEMY_TYPES[type];
-  const hp = def.hp * hpMul(wave) * mode.hpMul;
+  const hp = def.hp * (type === 'boss' ? bossHpMul(wave) : hpMul(wave)) * mode.hpMul;
   enemies.push({
     type, def,
     x: WAYPOINTS[0].x, y: WAYPOINTS[0].y,
