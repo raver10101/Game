@@ -1546,53 +1546,142 @@ function drawTowerShape(x, y, type, pathTiers, angle, flash, recoil){
   }
 }
 
-/* ---------- tower menu icons (context-safe; forward = +x) ---------- */
-const ICON_TURRET = {
-  gun(g, c){ g.fillStyle='#3a4152'; g.fillRect(1,-7,17,5); g.fillRect(1,2,17,5);
-    g.fillStyle=c; g.fillRect(15,-7,4,5); g.fillRect(15,2,4,5); },
-  cannon(g, c){ g.fillStyle='#4a3626'; rrp(g,0,-8,16,16,4); g.fill();
-    g.fillStyle=c; rrp(g,11,-9,8,18,3); g.fill(); },
-  frost(g, c){ g.fillStyle=c; g.beginPath(); g.moveTo(20,0); g.lineTo(6,-9); g.lineTo(-5,0); g.lineTo(6,9); g.closePath(); g.fill();
-    g.strokeStyle='rgba(255,255,255,0.65)'; g.lineWidth=1; g.stroke();
-    g.beginPath(); g.moveTo(6,-9); g.lineTo(6,9); g.stroke(); },
-  sniper(g, c){ g.fillStyle='#3a4152'; g.fillRect(0,-3,28,6);
-    g.fillStyle=c; g.fillRect(24,-3,5,6);
-    g.fillStyle='#20262f'; g.fillRect(4,-6,9,3); g.strokeStyle=c; g.lineWidth=1; g.strokeRect(4,-6,9,3); },
-  tesla(g, c){ g.strokeStyle='#6a7488'; g.lineWidth=3; g.beginPath(); g.moveTo(0,0); g.lineTo(12,0); g.stroke();
-    g.fillStyle=c; g.beginPath(); g.arc(16,0,7,0,Math.PI*2); g.fill();
-    g.strokeStyle='rgba(255,255,255,0.75)'; g.lineWidth=1; g.stroke();
-    g.beginPath(); g.moveTo(22,-6); g.lineTo(26,-2); g.lineTo(23,0); g.lineTo(27,4); g.stroke(); },
-  poison(g, c){ g.fillStyle='#2f4a2c'; rrp(g,-2,-8,14,16,5); g.fill();
-    g.fillStyle=c; g.fillRect(10,-3,9,6); g.beginPath(); g.arc(3,0,4.5,0,Math.PI*2); g.fill(); },
-  missile(g, c){ g.fillStyle='#4a2f36'; rrp(g,0,-9,14,7,2); g.fill(); rrp(g,0,2,14,7,2); g.fill();
-    g.fillStyle=c;
-    g.beginPath(); g.moveTo(14,-5.5); g.lineTo(21,-5.5); g.lineTo(17,-8); g.closePath(); g.fill();
-    g.beginPath(); g.moveTo(14,5.5); g.lineTo(21,5.5); g.lineTo(17,8); g.closePath(); g.fill(); },
+/* ---------- realistic tower menu icons ---------- */
+function darken(hex, amt){
+  const n = parseInt(hex.slice(1), 16);
+  const r = Math.max(0, (n>>16) - amt), g = Math.max(0, ((n>>8)&255) - amt), b = Math.max(0, (n&255) - amt);
+  return 'rgb('+r+','+g+','+b+')';
+}
+// a cylindrically-shaded metal barrel from (x0) to (x0+len), centered on y=cy
+function iconBarrel(g, x0, cy, len, w, top, mid, bot){
+  const grd = g.createLinearGradient(0, cy-w/2, 0, cy+w/2);
+  grd.addColorStop(0, top); grd.addColorStop(0.42, mid); grd.addColorStop(1, bot);
+  rrp(g, x0, cy-w/2, len, w, Math.min(3, w*0.35)); g.fillStyle = grd; g.fill();
+  g.strokeStyle = 'rgba(255,255,255,0.45)'; g.lineWidth = 1; // top specular
+  g.beginPath(); g.moveTo(x0+1, cy-w/2+1); g.lineTo(x0+len-2, cy-w/2+1); g.stroke();
+}
+function iconBore(g, x, cy, rad, accent){
+  const bg = g.createRadialGradient(x, cy, 0, x, cy, rad);
+  bg.addColorStop(0, accent || '#05070a'); bg.addColorStop(0.55, '#0c0f15'); bg.addColorStop(1, '#242a33');
+  g.fillStyle = bg; g.beginPath(); g.arc(x, cy, rad, 0, Math.PI*2); g.fill();
+  g.strokeStyle = 'rgba(255,255,255,0.25)'; g.lineWidth = 0.8; g.stroke();
+}
+// steel weapon assemblies, aimed +x; drawn with depth and materials
+const ICON_WEAPON = {
+  gun(g, c){ // autocannon: boxy breech + twin shaded barrels with bores
+    g.fillStyle = '#2b313c'; rrp(g, -4, -8, 12, 16, 3); g.fill();
+    g.strokeStyle = 'rgba(255,255,255,0.18)'; g.lineWidth = 1; g.stroke();
+    iconBarrel(g, 4, -5, 18, 6, '#8a94a5', '#565e6d', '#2c323c');
+    iconBarrel(g, 4, 5, 18, 6, '#8a94a5', '#565e6d', '#2c323c');
+    iconBore(g, 21, -5, 2.1, c); iconBore(g, 21, 5, 2.1, c);
+  },
+  cannon(g, c){ // heavy mortar: thick reinforced barrel, wide glowing bore
+    g.fillStyle = '#2f2620'; rrp(g, -5, -9, 12, 18, 4); g.fill();
+    iconBarrel(g, 4, 0, 18, 15, '#9b8674', '#6a5646', '#33281f');
+    g.fillStyle = '#4a3b2c'; rrp(g, 16, -8.5, 5, 17, 2); g.fill(); // muzzle band
+    iconBore(g, 20, 0, 5.5, darken(c, 40));
+  },
+  frost(g, c){ // cryo emitter: faceted ice prism with inner glow
+    g.fillStyle = '#2a3742'; rrp(g, -5, -7, 11, 14, 3); g.fill();
+    const ice = g.createLinearGradient(0, -9, 0, 9);
+    ice.addColorStop(0, '#dff6ff'); ice.addColorStop(0.5, c); ice.addColorStop(1, darken(c, 40));
+    g.fillStyle = ice;
+    g.beginPath(); g.moveTo(22, 0); g.lineTo(8, -9); g.lineTo(0, 0); g.lineTo(8, 9); g.closePath(); g.fill();
+    g.strokeStyle = 'rgba(255,255,255,0.8)'; g.lineWidth = 1;
+    g.beginPath(); g.moveTo(8, -9); g.lineTo(8, 9); g.moveTo(0, 0); g.lineTo(22, 0); g.stroke();
+    glowIcon(g, 8, 0, 6, 'rgba(210,245,255,0.7)');
+  },
+  sniper(g, c){ // railgun: long twin-rail barrel, scope, muzzle
+    g.fillStyle = '#2b313c'; rrp(g, -5, -6, 12, 12, 3); g.fill();
+    iconBarrel(g, 4, 0, 26, 7, '#949dad', '#5c646f', '#2b313a');
+    g.strokeStyle = darken(c, 10); g.lineWidth = 1.2; // charged rails
+    g.beginPath(); g.moveTo(6, -2.4); g.lineTo(28, -2.4); g.moveTo(6, 2.4); g.lineTo(28, 2.4); g.stroke();
+    g.fillStyle = '#1a1f27'; rrp(g, 2, -8.5, 10, 5, 2); g.fill(); // scope
+    g.fillStyle = c; g.beginPath(); g.arc(10.5, -6, 1.4, 0, Math.PI*2); g.fill();
+    iconBore(g, 29, 0, 2.4, c);
+  },
+  tesla(g, c){ // arc coil: copper-ringed rod + glowing orb + arcs
+    g.fillStyle = '#3a2e22'; rrp(g, -4, -5, 10, 10, 2); g.fill();
+    g.strokeStyle = '#b9772f'; g.lineWidth = 2.5; // coil windings
+    for (let i = 0; i < 3; i++){ g.beginPath(); g.moveTo(4+i*3.5, -4); g.lineTo(4+i*3.5, 4); g.stroke(); }
+    glowIcon(g, 19, 0, 9, 'rgba(255,235,120,0.55)');
+    const orb = g.createRadialGradient(17, -2, 1, 19, 0, 7);
+    orb.addColorStop(0, '#fffbe0'); orb.addColorStop(0.5, c); orb.addColorStop(1, darken(c, 50));
+    g.fillStyle = orb; g.beginPath(); g.arc(19, 0, 7, 0, Math.PI*2); g.fill();
+    g.strokeStyle = 'rgba(255,255,255,0.9)'; g.lineWidth = 1;
+    g.beginPath(); g.moveTo(24, -7); g.lineTo(28, -3); g.lineTo(25, -1); g.lineTo(29, 3); g.stroke();
+  },
+  poison(g, c){ // chem sprayer: pressurized tank + nozzle + drips
+    const tank = g.createLinearGradient(0, -8, 0, 8);
+    tank.addColorStop(0, lighten(c, 30)); tank.addColorStop(0.5, darken(c, 20)); tank.addColorStop(1, darken(c, 55));
+    g.fillStyle = tank; rrp(g, -6, -8, 16, 16, 6); g.fill();
+    g.strokeStyle = 'rgba(0,0,0,0.35)'; g.lineWidth = 1; g.stroke();
+    g.fillStyle = 'rgba(255,255,255,0.35)'; rrp(g, -3, -6, 3, 11, 1.5); g.fill(); // gloss
+    iconBarrel(g, 9, 0, 12, 7, '#8a94a5', '#565e6d', '#2c323c'); // nozzle
+    iconBore(g, 20, 0, 2.6, lighten(c, 20));
+    g.fillStyle = lighten(c, 15); g.beginPath(); g.arc(23, 3, 1.4, 0, Math.PI*2); g.fill();
+  },
+  missile(g, c){ // launcher: twin tubes with missile noses + vents
+    g.fillStyle = '#2a2226'; rrp(g, -6, -10, 22, 20, 3); g.fill();
+    g.strokeStyle = 'rgba(255,255,255,0.14)'; g.lineWidth = 1; g.stroke();
+    for (const ty of [-5, 5]){
+      g.fillStyle = '#13161b'; rrp(g, -2, ty-3.5, 16, 7, 3); g.fill(); // tube bore
+      g.fillStyle = c; g.beginPath(); // missile nose
+      g.moveTo(15, ty-3); g.lineTo(21, ty); g.lineTo(15, ty+3); g.closePath(); g.fill();
+      g.fillStyle = 'rgba(255,255,255,0.5)'; g.beginPath(); g.arc(17, ty-0.8, 0.9, 0, Math.PI*2); g.fill();
+    }
+    g.fillStyle = '#4a3138'; rrp(g, -6, -10, 4, 20, 1.5); g.fill(); // rear vent
+  },
 };
+function glowIcon(g, x, y, r, col){
+  const gg = g.createRadialGradient(x, y, 0, x, y, r);
+  gg.addColorStop(0, col); gg.addColorStop(1, 'rgba(0,0,0,0)');
+  g.fillStyle = gg; g.beginPath(); g.arc(x, y, r, 0, Math.PI*2); g.fill();
+}
 
 function drawTowerIcon(type){
-  const S = 46, dpr = 2;
+  const S = 54, dpr = 3;
   const cv = document.createElement('canvas');
   cv.width = S*dpr; cv.height = S*dpr; cv.style.width = S+'px'; cv.style.height = S+'px';
   const g = cv.getContext('2d');
   g.scale(dpr, dpr); g.translate(S/2, S/2+1);
-  const b = TOWER_TYPES[type];
-  g.lineJoin = 'round';
-  // ground shadow
-  g.fillStyle = 'rgba(0,0,0,0.3)'; g.beginPath(); g.ellipse(0, 13, 14, 5, 0, 0, Math.PI*2); g.fill();
-  // base plate
-  const bg = g.createRadialGradient(-4, -4, 2, 0, 0, 15);
-  bg.addColorStop(0, '#3a475f'); bg.addColorStop(1, '#222c40');
-  g.beginPath(); g.arc(0, 0, 14, 0, Math.PI*2); g.fillStyle = bg; g.fill();
-  g.strokeStyle = '#4c5f85'; g.lineWidth = 2; g.stroke();
-  // turret, aimed up-right and scaled to fit the tile
-  g.save(); g.rotate(-0.62); g.scale(0.72, 0.72);
-  (ICON_TURRET[type] || ICON_TURRET.gun)(g, b.color);
+  g.lineJoin = 'round'; g.lineCap = 'round';
+  const b = TOWER_TYPES[type], R = 17;
+
+  // soft floor shadow
+  g.fillStyle = 'rgba(0,0,0,0.4)'; g.beginPath(); g.ellipse(1.5, R*0.55, R*1.05, R*0.4, 0, 0, Math.PI*2); g.fill();
+
+  // machined deployment pad: beveled steel ring, lit top-left
+  const rim = g.createLinearGradient(-R, -R, R, R);
+  rim.addColorStop(0, '#5b6982'); rim.addColorStop(0.5, '#3a4457'); rim.addColorStop(1, '#242c3a');
+  g.beginPath(); g.arc(0, 0, R, 0, Math.PI*2); g.fillStyle = rim; g.fill();
+  g.strokeStyle = 'rgba(255,255,255,0.28)'; g.lineWidth = 1.4; // rim light
+  g.beginPath(); g.arc(0, 0, R-0.7, Math.PI*0.9, Math.PI*1.95); g.stroke();
+  g.strokeStyle = 'rgba(0,0,0,0.4)'; g.lineWidth = 1.4;
+  g.beginPath(); g.arc(0, 0, R-0.7, -0.15, Math.PI*0.85); g.stroke();
+  // rivets around the ring
+  for (let i = 0; i < 8; i++){
+    const a = i/8*Math.PI*2, rx = Math.cos(a)*(R-3), ry = Math.sin(a)*(R-3);
+    g.fillStyle = '#20262f'; g.beginPath(); g.arc(rx, ry, 1.5, 0, Math.PI*2); g.fill();
+    g.fillStyle = 'rgba(255,255,255,0.25)'; g.beginPath(); g.arc(rx-0.5, ry-0.5, 0.7, 0, Math.PI*2); g.fill();
+  }
+  // recessed mount well
+  const well = g.createRadialGradient(-2, -2, 1, 0, 0, R-4);
+  well.addColorStop(0, '#39424f'); well.addColorStop(1, '#171d26');
+  g.beginPath(); g.arc(0, 0, R-4, 0, Math.PI*2); g.fillStyle = well; g.fill();
+
+  // turret shadow cast onto the pad, then the weapon assembly
+  g.save(); g.rotate(-0.5); g.scale(0.82, 0.82);
+  g.save(); g.translate(1.5, 2.5); g.globalAlpha = 0.3; g.fillStyle = '#000';
+  rrp(g, -6, -10, 30, 20, 5); g.fill(); g.restore();
+  (ICON_WEAPON[type] || ICON_WEAPON.gun)(g, b.color);
   g.restore();
-  // core hub with highlight
-  g.beginPath(); g.arc(0, 0, 6, 0, Math.PI*2); g.fillStyle = b.color; g.fill();
-  g.strokeStyle = 'rgba(0,0,0,0.4)'; g.lineWidth = 1.5; g.stroke();
-  g.fillStyle = 'rgba(255,255,255,0.4)'; g.beginPath(); g.arc(-2, -2, 2, 0, Math.PI*2); g.fill();
+
+  // pivot hub
+  const hub = g.createRadialGradient(-1.5, -1.5, 0.5, 0, 0, 5.5);
+  hub.addColorStop(0, lighten(b.color, 60)); hub.addColorStop(0.6, b.color); hub.addColorStop(1, darken(b.color, 45));
+  g.beginPath(); g.arc(0, 0, 5.5, 0, Math.PI*2); g.fillStyle = hub; g.fill();
+  g.strokeStyle = 'rgba(0,0,0,0.45)'; g.lineWidth = 1; g.stroke();
   return cv;
 }
 
