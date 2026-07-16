@@ -1455,83 +1455,69 @@ function roundRect(x, y, w, h, r){
   ctx.arcTo(x, y+h, x, y, r); ctx.arcTo(x, y, x+w, y, r); ctx.closePath();
 }
 
-// each tower draws its barrel/emitter in local space (+x = aim direction)
-const TOWER_ART = {
-  gun(g, c, flash){ // twin machine-gun barrels
-    g.fillStyle = '#3a4152';
-    g.fillRect(1, -6, 15, 4); g.fillRect(1, 2, 15, 4);
-    g.fillStyle = flash ? '#fff' : c;
-    g.fillRect(14, -6, 4, 4); g.fillRect(14, 2, 4, 4);
-  },
-  cannon(g, c, flash){ // fat stubby mortar
-    g.fillStyle = '#4a3626';
-    roundRect(0, -7, 16, 14, 4); g.fill();
-    g.fillStyle = flash ? '#fff' : c;
-    roundRect(11, -8, 7, 16, 3); g.fill();
-  },
-  frost(g, c, flash){ // crystal prism
-    g.fillStyle = flash ? '#fff' : c;
-    g.beginPath(); g.moveTo(18, 0); g.lineTo(6, -8); g.lineTo(-4, 0); g.lineTo(6, 8); g.closePath(); g.fill();
-    g.strokeStyle = 'rgba(255,255,255,0.6)'; g.lineWidth = 1; g.stroke();
-  },
-  sniper(g, c, flash){ // long thin rifle + scope
-    g.fillStyle = '#3a4152'; g.fillRect(0, -2.5, 26, 5);
-    g.fillStyle = flash ? '#fff' : c; g.fillRect(22, -2.5, 5, 5);
-    g.fillStyle = '#20262f'; g.fillRect(4, -5, 7, 3);
-  },
-  tesla(g, c, flash){ // coil with orb emitter
-    g.strokeStyle = '#6a7488'; g.lineWidth = 3;
-    g.beginPath(); g.moveTo(0, 0); g.lineTo(12, 0); g.stroke();
-    g.fillStyle = flash ? '#fff' : c;
-    g.beginPath(); g.arc(15, 0, 6, 0, Math.PI*2); g.fill();
-    g.strokeStyle = 'rgba(255,255,255,0.7)'; g.lineWidth = 1; g.stroke();
-  },
-  poison(g, c, flash){ // tank + nozzle
-    g.fillStyle = '#2f4a2c'; roundRect(-2, -7, 14, 14, 5); g.fill();
-    g.fillStyle = flash ? '#fff' : c;
-    g.fillRect(10, -3, 9, 6);
-    g.beginPath(); g.arc(3, 0, 4, 0, Math.PI*2); g.fill();
-  },
-  missile(g, c, flash){ // twin launch pods
-    g.fillStyle = '#4a2f36';
-    roundRect(0, -8, 14, 6, 2); g.fill();
-    roundRect(0, 2, 14, 6, 2); g.fill();
-    g.fillStyle = flash ? '#fff' : c;
-    g.beginPath(); g.moveTo(14, -5); g.lineTo(20, -5); g.lineTo(17, -7); g.closePath(); g.fill();
-    g.beginPath(); g.moveTo(14, 5); g.lineTo(20, 5); g.lineTo(17, 7); g.closePath(); g.fill();
-  },
-};
+/* shared machined deployment pad (menu + board), origin at center */
+function paintPad(g, R){
+  g.lineJoin = 'round'; g.lineCap = 'round';
+  g.fillStyle = 'rgba(0,0,0,0.4)'; g.beginPath(); g.ellipse(1.5, R*0.55, R*1.05, R*0.4, 0, 0, Math.PI*2); g.fill();
+  const rim = g.createLinearGradient(-R, -R, R, R);
+  rim.addColorStop(0, '#5b6982'); rim.addColorStop(0.5, '#3a4457'); rim.addColorStop(1, '#242c3a');
+  g.beginPath(); g.arc(0, 0, R, 0, Math.PI*2); g.fillStyle = rim; g.fill();
+  g.strokeStyle = 'rgba(255,255,255,0.28)'; g.lineWidth = 1.4;
+  g.beginPath(); g.arc(0, 0, R-0.7, Math.PI*0.9, Math.PI*1.95); g.stroke();
+  g.strokeStyle = 'rgba(0,0,0,0.4)'; g.lineWidth = 1.4;
+  g.beginPath(); g.arc(0, 0, R-0.7, -0.15, Math.PI*0.85); g.stroke();
+  for (let i = 0; i < 8; i++){
+    const a = i/8*Math.PI*2, rx = Math.cos(a)*(R-3), ry = Math.sin(a)*(R-3);
+    g.fillStyle = '#20262f'; g.beginPath(); g.arc(rx, ry, 1.5, 0, Math.PI*2); g.fill();
+    g.fillStyle = 'rgba(255,255,255,0.25)'; g.beginPath(); g.arc(rx-0.5, ry-0.5, 0.7, 0, Math.PI*2); g.fill();
+  }
+  const well = g.createRadialGradient(-2, -2, 1, 0, 0, R-4);
+  well.addColorStop(0, '#39424f'); well.addColorStop(1, '#171d26');
+  g.beginPath(); g.arc(0, 0, R-4, 0, Math.PI*2); g.fillStyle = well; g.fill();
+}
+// bake the (identical, static) pad once and blit it under every tower
+let _padSprite = null;
+function getPadSprite(){
+  if (_padSprite) return _padSprite;
+  const R = 17, HE = 22, dpr = 3;
+  const cv = document.createElement('canvas'); cv.width = HE*2*dpr; cv.height = HE*2*dpr;
+  const g = cv.getContext('2d'); g.scale(dpr, dpr); g.translate(HE, HE);
+  paintPad(g, R);
+  _padSprite = { cv, HE };
+  return _padSprite;
+}
+// paint the rotating weapon assembly (menu-style) at the current origin
+function paintWeapon(g, type, color){
+  g.save(); g.scale(0.82, 0.82);
+  g.save(); g.translate(1.5, 2.5); g.globalAlpha = 0.3; g.fillStyle = '#000';
+  rrp(g, -6, -10, 30, 20, 5); g.fill(); g.restore();
+  (ICON_WEAPON[type] || ICON_WEAPON.gun)(g, color);
+  g.restore();
+}
+function paintHub(g, color){
+  const hub = g.createRadialGradient(-1.5, -1.5, 0.5, 0, 0, 5.5);
+  hub.addColorStop(0, lighten(color, 60)); hub.addColorStop(0.6, color); hub.addColorStop(1, darken(color, 45));
+  g.beginPath(); g.arc(0, 0, 5.5, 0, Math.PI*2); g.fillStyle = hub; g.fill();
+  g.strokeStyle = 'rgba(0,0,0,0.45)'; g.lineWidth = 1; g.stroke();
+}
 
 function drawTowerShape(x, y, type, pathTiers, angle, flash, recoil){
   const b = TOWER_TYPES[type];
-  // ground shadow
-  ctx.fillStyle = 'rgba(0,0,0,0.28)';
-  ctx.beginPath(); ctx.ellipse(x, y+15, 16, 6, 0, 0, Math.PI*2); ctx.fill();
-  // base plate with subtle radial shade
-  const bg = ctx.createRadialGradient(x-5, y-5, 2, x, y, 18);
-  bg.addColorStop(0, '#3a475f'); bg.addColorStop(1, '#232d40');
-  ctx.beginPath(); ctx.arc(x, y, 17, 0, Math.PI*2);
-  ctx.fillStyle = bg; ctx.fill();
-  ctx.strokeStyle = '#4c5f85'; ctx.lineWidth = 2; ctx.stroke();
-  // rotating turret (barrel recoils along -aim while firing)
+  const pad = getPadSprite();
+  ctx.drawImage(pad.cv, x-pad.HE, y-pad.HE, pad.HE*2, pad.HE*2);
+  // rotating weapon (recoils along -aim while firing)
   ctx.save();
-  ctx.translate(x, y); ctx.rotate(angle || 0);
-  ctx.translate(-(recoil || 0), 0);
-  (TOWER_ART[type] || TOWER_ART.gun)(ctx, b.color, flash);
+  ctx.translate(x, y); ctx.rotate(angle || 0); ctx.translate(-(recoil || 0), 0);
+  paintWeapon(ctx, type, b.color);
   ctx.restore();
   // muzzle-flash glow at the barrel tip
   if (flash){
-    const mx = x + Math.cos(angle)*22, my = y + Math.sin(angle)*22;
-    const fg = ctx.createRadialGradient(mx, my, 0, mx, my, 12);
-    fg.addColorStop(0, 'rgba(255,255,235,0.9)'); fg.addColorStop(1, 'rgba(255,220,120,0)');
-    ctx.fillStyle = fg; ctx.beginPath(); ctx.arc(mx, my, 12, 0, Math.PI*2); ctx.fill();
+    const mx = x + Math.cos(angle)*18, my = y + Math.sin(angle)*18;
+    const fg = ctx.createRadialGradient(mx, my, 0, mx, my, 13);
+    fg.addColorStop(0, 'rgba(255,250,230,0.95)'); fg.addColorStop(0.5, 'rgba(255,220,120,0.5)'); fg.addColorStop(1, 'rgba(255,200,90,0)');
+    ctx.fillStyle = fg; ctx.beginPath(); ctx.arc(mx, my, 13, 0, Math.PI*2); ctx.fill();
   }
-  // core hub
-  ctx.beginPath(); ctx.arc(x, y, 7, 0, Math.PI*2);
-  ctx.fillStyle = b.color; ctx.fill();
-  ctx.strokeStyle = 'rgba(0,0,0,0.4)'; ctx.lineWidth = 1.5; ctx.stroke();
-  ctx.fillStyle = 'rgba(255,255,255,0.35)';
-  ctx.beginPath(); ctx.arc(x-2, y-2, 2.5, 0, Math.PI*2); ctx.fill();
+  ctx.save(); ctx.translate(x, y); paintHub(ctx, b.color); ctx.restore();
   // upgrade pips, colored per path
   const total = pathTiers[0] + pathTiers[1] + pathTiers[2];
   if (total > 0){
@@ -1539,7 +1525,7 @@ function drawTowerShape(x, y, type, pathTiers, angle, flash, recoil){
     for (let i = 0; i < 3; i++){
       ctx.fillStyle = PATH_COLORS[i];
       for (let t = 0; t < pathTiers[i]; t++){
-        ctx.beginPath(); ctx.arc(px, y + 20, 2.5, 0, Math.PI*2); ctx.fill();
+        ctx.beginPath(); ctx.arc(px, y + 22, 2.3, 0, Math.PI*2); ctx.fill();
         px += 6;
       }
     }
@@ -1646,42 +1632,10 @@ function drawTowerIcon(type){
   const g = cv.getContext('2d');
   g.scale(dpr, dpr); g.translate(S/2, S/2+1);
   g.lineJoin = 'round'; g.lineCap = 'round';
-  const b = TOWER_TYPES[type], R = 17;
-
-  // soft floor shadow
-  g.fillStyle = 'rgba(0,0,0,0.4)'; g.beginPath(); g.ellipse(1.5, R*0.55, R*1.05, R*0.4, 0, 0, Math.PI*2); g.fill();
-
-  // machined deployment pad: beveled steel ring, lit top-left
-  const rim = g.createLinearGradient(-R, -R, R, R);
-  rim.addColorStop(0, '#5b6982'); rim.addColorStop(0.5, '#3a4457'); rim.addColorStop(1, '#242c3a');
-  g.beginPath(); g.arc(0, 0, R, 0, Math.PI*2); g.fillStyle = rim; g.fill();
-  g.strokeStyle = 'rgba(255,255,255,0.28)'; g.lineWidth = 1.4; // rim light
-  g.beginPath(); g.arc(0, 0, R-0.7, Math.PI*0.9, Math.PI*1.95); g.stroke();
-  g.strokeStyle = 'rgba(0,0,0,0.4)'; g.lineWidth = 1.4;
-  g.beginPath(); g.arc(0, 0, R-0.7, -0.15, Math.PI*0.85); g.stroke();
-  // rivets around the ring
-  for (let i = 0; i < 8; i++){
-    const a = i/8*Math.PI*2, rx = Math.cos(a)*(R-3), ry = Math.sin(a)*(R-3);
-    g.fillStyle = '#20262f'; g.beginPath(); g.arc(rx, ry, 1.5, 0, Math.PI*2); g.fill();
-    g.fillStyle = 'rgba(255,255,255,0.25)'; g.beginPath(); g.arc(rx-0.5, ry-0.5, 0.7, 0, Math.PI*2); g.fill();
-  }
-  // recessed mount well
-  const well = g.createRadialGradient(-2, -2, 1, 0, 0, R-4);
-  well.addColorStop(0, '#39424f'); well.addColorStop(1, '#171d26');
-  g.beginPath(); g.arc(0, 0, R-4, 0, Math.PI*2); g.fillStyle = well; g.fill();
-
-  // turret shadow cast onto the pad, then the weapon assembly
-  g.save(); g.rotate(-0.5); g.scale(0.82, 0.82);
-  g.save(); g.translate(1.5, 2.5); g.globalAlpha = 0.3; g.fillStyle = '#000';
-  rrp(g, -6, -10, 30, 20, 5); g.fill(); g.restore();
-  (ICON_WEAPON[type] || ICON_WEAPON.gun)(g, b.color);
-  g.restore();
-
-  // pivot hub
-  const hub = g.createRadialGradient(-1.5, -1.5, 0.5, 0, 0, 5.5);
-  hub.addColorStop(0, lighten(b.color, 60)); hub.addColorStop(0.6, b.color); hub.addColorStop(1, darken(b.color, 45));
-  g.beginPath(); g.arc(0, 0, 5.5, 0, Math.PI*2); g.fillStyle = hub; g.fill();
-  g.strokeStyle = 'rgba(0,0,0,0.45)'; g.lineWidth = 1; g.stroke();
+  const b = TOWER_TYPES[type];
+  paintPad(g, 17);
+  g.save(); g.rotate(-0.5); paintWeapon(g, type, b.color); g.restore();
+  paintHub(g, b.color);
   return cv;
 }
 
