@@ -75,7 +75,7 @@
     background: var(--panel2); cursor: pointer; font-size: 12px;
     transition: border-color .15s, background .15s;
   }
-  .towerBtn .ic { font-size: 20px; }
+  .towerBtn .ic { display: block; margin: 0 auto 1px; }
   .towerBtn .cost { color: var(--gold); font-size: 11px; }
   .towerBtn .key { color: var(--dim); font-size: 10px; }
   .towerBtn:hover { background: #2c3850; }
@@ -1546,6 +1546,56 @@ function drawTowerShape(x, y, type, pathTiers, angle, flash, recoil){
   }
 }
 
+/* ---------- tower menu icons (context-safe; forward = +x) ---------- */
+const ICON_TURRET = {
+  gun(g, c){ g.fillStyle='#3a4152'; g.fillRect(1,-7,17,5); g.fillRect(1,2,17,5);
+    g.fillStyle=c; g.fillRect(15,-7,4,5); g.fillRect(15,2,4,5); },
+  cannon(g, c){ g.fillStyle='#4a3626'; rrp(g,0,-8,16,16,4); g.fill();
+    g.fillStyle=c; rrp(g,11,-9,8,18,3); g.fill(); },
+  frost(g, c){ g.fillStyle=c; g.beginPath(); g.moveTo(20,0); g.lineTo(6,-9); g.lineTo(-5,0); g.lineTo(6,9); g.closePath(); g.fill();
+    g.strokeStyle='rgba(255,255,255,0.65)'; g.lineWidth=1; g.stroke();
+    g.beginPath(); g.moveTo(6,-9); g.lineTo(6,9); g.stroke(); },
+  sniper(g, c){ g.fillStyle='#3a4152'; g.fillRect(0,-3,28,6);
+    g.fillStyle=c; g.fillRect(24,-3,5,6);
+    g.fillStyle='#20262f'; g.fillRect(4,-6,9,3); g.strokeStyle=c; g.lineWidth=1; g.strokeRect(4,-6,9,3); },
+  tesla(g, c){ g.strokeStyle='#6a7488'; g.lineWidth=3; g.beginPath(); g.moveTo(0,0); g.lineTo(12,0); g.stroke();
+    g.fillStyle=c; g.beginPath(); g.arc(16,0,7,0,Math.PI*2); g.fill();
+    g.strokeStyle='rgba(255,255,255,0.75)'; g.lineWidth=1; g.stroke();
+    g.beginPath(); g.moveTo(22,-6); g.lineTo(26,-2); g.lineTo(23,0); g.lineTo(27,4); g.stroke(); },
+  poison(g, c){ g.fillStyle='#2f4a2c'; rrp(g,-2,-8,14,16,5); g.fill();
+    g.fillStyle=c; g.fillRect(10,-3,9,6); g.beginPath(); g.arc(3,0,4.5,0,Math.PI*2); g.fill(); },
+  missile(g, c){ g.fillStyle='#4a2f36'; rrp(g,0,-9,14,7,2); g.fill(); rrp(g,0,2,14,7,2); g.fill();
+    g.fillStyle=c;
+    g.beginPath(); g.moveTo(14,-5.5); g.lineTo(21,-5.5); g.lineTo(17,-8); g.closePath(); g.fill();
+    g.beginPath(); g.moveTo(14,5.5); g.lineTo(21,5.5); g.lineTo(17,8); g.closePath(); g.fill(); },
+};
+
+function drawTowerIcon(type){
+  const S = 46, dpr = 2;
+  const cv = document.createElement('canvas');
+  cv.width = S*dpr; cv.height = S*dpr; cv.style.width = S+'px'; cv.style.height = S+'px';
+  const g = cv.getContext('2d');
+  g.scale(dpr, dpr); g.translate(S/2, S/2+1);
+  const b = TOWER_TYPES[type];
+  g.lineJoin = 'round';
+  // ground shadow
+  g.fillStyle = 'rgba(0,0,0,0.3)'; g.beginPath(); g.ellipse(0, 13, 14, 5, 0, 0, Math.PI*2); g.fill();
+  // base plate
+  const bg = g.createRadialGradient(-4, -4, 2, 0, 0, 15);
+  bg.addColorStop(0, '#3a475f'); bg.addColorStop(1, '#222c40');
+  g.beginPath(); g.arc(0, 0, 14, 0, Math.PI*2); g.fillStyle = bg; g.fill();
+  g.strokeStyle = '#4c5f85'; g.lineWidth = 2; g.stroke();
+  // turret, aimed up-right and scaled to fit the tile
+  g.save(); g.rotate(-0.62); g.scale(0.72, 0.72);
+  (ICON_TURRET[type] || ICON_TURRET.gun)(g, b.color);
+  g.restore();
+  // core hub with highlight
+  g.beginPath(); g.arc(0, 0, 6, 0, Math.PI*2); g.fillStyle = b.color; g.fill();
+  g.strokeStyle = 'rgba(0,0,0,0.4)'; g.lineWidth = 1.5; g.stroke();
+  g.fillStyle = 'rgba(255,255,255,0.4)'; g.beginPath(); g.arc(-2, -2, 2, 0, Math.PI*2); g.fill();
+  return cv;
+}
+
 /* ---------- enemy rendering ---------- */
 /* sci-fi military palette: metal hull + dark shade + glowing faction accent */
 const ENEMY_STYLE = {
@@ -1780,7 +1830,9 @@ function updateTowerGrid(){
       const el = document.createElement('div');
       el.className = 'towerBtn'; el.id = 'tb_'+k;
       el.title = b.desc;
-      el.innerHTML = `<span class="ic">${b.icon}</span><span>${b.name}</span><span class="cost" id="tbc_${k}"></span><span class="key">[${i+1}]</span>`;
+      el.innerHTML = `<span>${b.name}</span><span class="cost" id="tbc_${k}"></span><span class="key">[${i+1}]</span>`;
+      const icon = drawTowerIcon(k); icon.className = 'ic';
+      el.insertBefore(icon, el.firstChild);
       el.addEventListener('click', () => setPlacing(placing === k ? null : k));
       grid.appendChild(el);
     });
