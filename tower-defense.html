@@ -18,6 +18,7 @@
     --red: #ff6b6b;
   }
   * { margin: 0; padding: 0; box-sizing: border-box; }
+  html, body { max-width: 100%; overflow-x: hidden; }
   body {
     background: var(--bg);
     color: var(--text);
@@ -149,10 +150,34 @@
   }
   #toast.show { opacity: 1; }
 
+  .cardX {
+    float: right; padding: 3px 10px; font-size: 13px; line-height: 1;
+    margin-top: -2px; border-color: #7a3a3a;
+  }
+  #cancelBtn {
+    position: absolute; bottom: 14px; left: 50%; transform: translateX(-50%);
+    display: none; z-index: 6; font-weight: 700; padding: 10px 20px; font-size: 15px;
+    background: rgba(120, 52, 52, 0.94); border-color: #8a4444; color: #fff;
+  }
+  #cancelBtn.show { display: block; }
+
   @media (max-width: 900px) {
     #layout { flex-direction: column; }
     #sidebar { width: 100%; }
     #towerGrid { grid-template-columns: repeat(4, 1fr); }
+    h1 .sub { display: none; }
+    /* upgrade panel becomes a bottom sheet so it's always reachable on phones */
+    #selCard {
+      position: fixed; left: 0; right: 0; bottom: 0; z-index: 60; margin: 0;
+      width: 100vw; box-sizing: border-box;
+      border-radius: 16px 16px 0 0; max-height: 74vh; overflow-y: auto;
+      border-color: var(--accent); box-shadow: 0 -10px 30px rgba(0,0,0,0.6);
+      padding-bottom: 18px;
+    }
+    #selInfo .row { flex-wrap: wrap; }
+    #selInfo .row span:last-child { overflow-wrap: anywhere; }
+    #selCard .pathRow button, #selCard .btns button { padding: 11px 6px; font-size: 14px; }
+    .cardX { padding: 6px 14px; font-size: 15px; }
   }
 </style>
 </head>
@@ -177,6 +202,7 @@
   <div id="boardWrap">
     <canvas id="game" width="960" height="624"></canvas>
     <div id="toast"></div>
+    <button id="cancelBtn">✕ Cancel build</button>
     <div id="overlay" class="show">
       <div class="box">
         <h2 id="ovTitle">🏰 Tower Defense</h2>
@@ -199,12 +225,12 @@
   <div id="sidebar">
     <div class="card">
       <h3>Build Towers</h3>
-      <div style="font-size:11px;color:var(--dim);margin:-4px 0 8px;">keys 1–7 to select · Esc to cancel</div>
+      <div style="font-size:11px;color:var(--dim);margin:-4px 0 8px;">tap an icon to build, then tap the map · tap a placed tower to upgrade</div>
       <div id="towerGrid"></div>
     </div>
 
     <div class="card" id="selCard" style="display:none">
-      <h3>Selected Tower</h3>
+      <h3>Selected Tower <button id="selCloseBtn" class="cardX" title="close">✕ Close</button></h3>
       <div id="selInfo">
         <div id="selName"></div>
         <div id="selDesc"></div>
@@ -927,6 +953,7 @@ function resetGame(k){
   towers = []; enemies = []; projectiles = []; effects = []; particles = []; floaters = [];
   waveActive = false; spawnQueue = []; spawnTimer = 0; gameOver = false; autoTimer = -1;
   placing = null; selected = null;
+  document.getElementById('cancelBtn').classList.remove('show');
   document.getElementById('modeLabel').textContent = `${map.icon} ${map.name} · ${mode.icon} ${mode.name}`;
   document.getElementById('overlay').classList.remove('show');
   if (k) toast(`${map.icon} ${map.name} — ${mode.name}: survive all ${mode.waves} waves!`, true);
@@ -1846,6 +1873,7 @@ canvas.addEventListener('click', ev => {
 function setPlacing(type){
   placing = type;
   selected = null;
+  document.getElementById('cancelBtn').classList.toggle('show', !!type);
   updateSelCard();
   updateTowerGrid();
 }
@@ -1962,6 +1990,8 @@ $('targetBtn').addEventListener('click', () => {
   tw.mode = tw.mode === 'first' ? 'strong' : (tw.mode === 'strong' ? 'last' : 'first');
   updateSelCard();
 });
+$('selCloseBtn').addEventListener('click', () => { selected = null; updateSelCard(); });
+$('cancelBtn').addEventListener('click', () => setPlacing(null));
 
 $('startBtn').addEventListener('click', () => { ac(); startWave(); });
 document.querySelectorAll('.modeBtn').forEach(b =>
