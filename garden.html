@@ -213,6 +213,7 @@
     border-radius: 6px;
     cursor: crosshair;
     touch-action: manipulation;
+    -webkit-touch-callout: none;
     box-shadow: inset 0 0 22px rgba(0,0,0,0.22);
   }
   #bed.erasing { cursor: not-allowed; }
@@ -232,9 +233,20 @@
     overflow: hidden;
     transition: transform 0.08s;
   }
+  .plant { cursor: grab; -webkit-touch-callout: none; }
   .plant span { font-size: calc(var(--cell) * 0.62); line-height: 1; pointer-events: none; }
   .plant.big span { font-size: calc(var(--cell) * 1.0); }
   .plant:hover { transform: scale(1.04); z-index: 3; }
+  .plant.dragging {
+    transform: scale(1.12);
+    z-index: 8;
+    opacity: 0.93;
+    cursor: grabbing;
+    transition: none;
+    box-shadow: 0 8px 18px rgba(0,0,0,0.4);
+    border-color: #fff;
+  }
+  .plant.dragging.invalid { box-shadow: 0 0 0 3px #ff6b6b, 0 8px 18px rgba(0,0,0,0.4); }
 
   .preview {
     position: absolute; pointer-events: none;
@@ -378,7 +390,7 @@
           </div>
         </div>
       </div>
-      <p class="hint">Each square is 1 ft². Pick a plant from the side menu, then click or drag on the bed to plant it. Plants take up the space they need — a tomato claims 2×2 ft. Click a planted square with <b>Erase</b> on to pull it out.</p>
+      <p class="hint">Each square is 1 ft². Pick a plant from the side menu, then click on the bed to plant it — on a computer you can drag to plant a whole row. Plants take up the space they need, so a tomato claims 2×2 ft. <b>To move a plant</b>, press and hold it (or just drag it with a mouse) and drop it somewhere new; it turns red where it will not fit. Turn on <b>Erase</b> and tap a plant to pull it out.</p>
     </section>
 
     <section class="card">
@@ -709,7 +721,8 @@ function renderBed() {
     d.style.width = pl.s * cellPx + 'px';
     d.style.height = pl.s * cellPx + 'px';
     d.style.background = p.col;
-    d.title = p.n + ' — ' + p.sp + ' in spacing';
+    d.dataset.id = pl.id;
+    d.title = p.n + ' — ' + p.sp + ' in spacing (drag to move)';
     d.innerHTML = '<span>' + p.e + '</span>';
     bed.appendChild(d);
   });
@@ -736,9 +749,10 @@ function renderRulers() {
 }
 
 /* ---------------- placement ---------------- */
-function occupied() {
+function occupied(exceptId) {
   const set = new Set();
   state.placed.forEach(pl => {
+    if (pl.id === exceptId) return;   // a plant never blocks its own move
     for (let dx = 0; dx < pl.s; dx++)
       for (let dy = 0; dy < pl.s; dy++)
         set.add((pl.x + dx) + ',' + (pl.y + dy));
@@ -791,15 +805,85 @@ function tryErase(evt) {
 
 let painting = false, changedThisDrag = false, touchStart = null;
 
-/* Mouse: press and drag paints a row of plants.
-   Touch: a drag has to scroll the page, so we only plant on a clean tap. */
+/* ---------------- moving a planted square ---------------- */
+const HOLD_MS = 400;      // press-and-hold before a finger picks a plant up
+const MOVE_TOL = 12;      // finger wobble still counts as holding still
+let drag = null, holdTimer = null;
+
+function startDrag(idx, c) {
+  const pl = state.placed[idx];
+  drag = {
+    id: pl.id, s: pl.s,
+    gx: c.x - pl.x, gy: c.y - pl.y,          // where in the plant it was grabbed
+    origX: pl.x, origY: pl.y,
+    tx: pl.x, ty: pl.y, ok: true,
+    el: bed.querySelector('[data-id="' + pl.id + '"]')
+  };
+  if (drag.el) drag.el.classList.add('dragging');
+  ghost.classList.add('hidden');
+  if (navigator.vibrate) navigator.vibrate(12);
+}
+
+function dragTo(e) {
+  if (!drag) return;
+  const c = cellAt(e);
+  drag.tx = clamp(c.x - drag.gx, 0, state.w - drag.s);
+  drag.ty = clamp(c.y - drag.gy, 0, state.h - drag.s);
+  drag.ok = areaFree(drag.tx, drag.ty, drag.s, occupied(drag.id));
+  if (drag.el) {
+    drag.el.style.left = drag.tx * cellPx + 'px';
+    drag.el.style.top = drag.ty * cellPx + 'px';
+    drag.el.classList.toggle('invalid', !drag.ok);
+  }
+}
+
+function endDrag(commit) {
+  if (!drag) return;
+  const pl = state.placed.find(p => p.id === drag.id);
+  const moved = drag.tx !== drag.origX || drag.ty !== drag.origY;
+  if (commit && pl && drag.ok && moved) {
+    pushHistory();
+    pl.x = drag.tx;
+    pl.y = drag.ty;
+    saveState();
+  }
+  drag = null;
+  renderBed();      // also snaps back to the original spot on an illegal drop
+}
+
+function cancelHold() {
+  clearTimeout(holdTimer);
+  holdTimer = null;
+}
+
+/* a held plant follows the finger, so the page must not scroll underneath it */
+bed.addEventListener('touchmove', e => {
+  if (drag) e.preventDefault();
+}, { passive: false });
+
+/* Mouse: press and drag paints a row of plants, or moves a planted one.
+   Touch: a drag has to scroll the page, so we plant on a clean tap and
+   move only after a press-and-hold. */
 bed.addEventListener('pointerdown', e => {
   if (e.button !== undefined && e.button !== 0) return;
+  const c = cellAt(e);
+  const idx = erasing ? -1 : plantIndexAt(c.x, c.y);
+
   if (e.pointerType === 'touch') {
     touchStart = { x: e.clientX, y: e.clientY, t: Date.now() };
+    if (idx !== -1) {
+      const at = { clientX: e.clientX, clientY: e.clientY };
+      holdTimer = setTimeout(() => {
+        holdTimer = null;
+        startDrag(idx, c);
+        dragTo(at);
+      }, HOLD_MS);
+    }
     return;
   }
+
   bed.setPointerCapture(e.pointerId);
+  if (idx !== -1) { startDrag(idx, c); return; }   // grab it instead of painting
   painting = true;
   changedThisDrag = false;
   pushHistory();
@@ -807,18 +891,26 @@ bed.addEventListener('pointerdown', e => {
 });
 
 bed.addEventListener('pointermove', e => {
-  if (e.pointerType === 'touch') return;
+  if (drag) { dragTo(e); return; }
+  if (e.pointerType === 'touch') {
+    // moving before the hold fires means the finger is scrolling, not grabbing
+    if (holdTimer && touchStart &&
+        Math.hypot(e.clientX - touchStart.x, e.clientY - touchStart.y) > MOVE_TOL) cancelHold();
+    return;
+  }
   updateGhost(e);
   if (painting) act(e);
 });
 
 bed.addEventListener('pointerup', e => {
+  if (drag) { endDrag(true); touchStart = null; cancelHold(); return; }
   if (e.pointerType === 'touch') {
+    cancelHold();
     const s = touchStart;
     touchStart = null;
     if (!s) return;
     const moved = Math.hypot(e.clientX - s.x, e.clientY - s.y);
-    if (moved > 12 || Date.now() - s.t > 800) return;   // that was a scroll, not a tap
+    if (moved > MOVE_TOL || Date.now() - s.t > 800) return;   // a scroll, not a tap
     changedThisDrag = false;
     pushHistory();
     act(e);
@@ -830,6 +922,8 @@ bed.addEventListener('pointerup', e => {
 });
 
 bed.addEventListener('pointercancel', e => {
+  cancelHold();
+  if (drag) { endDrag(false); touchStart = null; return; }
   if (e.pointerType === 'touch') { touchStart = null; return; }
   endPaint();
 });
@@ -889,7 +983,7 @@ $('undoBtn').onclick = () => {
 document.addEventListener('keydown', e => {
   const typing = /^(INPUT|TEXTAREA)$/.test(e.target.tagName);
   if (!typing && (e.ctrlKey || e.metaKey) && e.key === 'z') { e.preventDefault(); $('undoBtn').click(); }
-  if (e.key === 'Escape') { selectedKey = null; erasing = false; renderList(); renderDetail(); renderToolbar(); ghost.classList.add('hidden'); }
+  if (e.key === 'Escape') { cancelHold(); endDrag(false); selectedKey = null; erasing = false; renderList(); renderDetail(); renderToolbar(); ghost.classList.add('hidden'); }
 });
 
 /* ---------------- toolbar ---------------- */
