@@ -1,0 +1,969 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Garden Planner</title>
+<style>
+  :root {
+    --bg: #f4f1e8;
+    --panel: #ffffff;
+    --ink: #24301f;
+    --muted: #6b7a5e;
+    --line: #dcd8c8;
+    --green: #4c7a3f;
+    --green-dark: #38602d;
+    --soil: #8c6a4a;
+    --accent: #d98a3b;
+    --shadow: 0 2px 10px rgba(40, 50, 30, 0.08);
+    --cell: 34px;
+    --radius: 12px;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  html, body {
+    height: 100%;
+    font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+    background: var(--bg);
+    color: var(--ink);
+  }
+
+  button, input, select { font: inherit; color: inherit; }
+  button { cursor: pointer; border: none; background: none; }
+
+  /* ---------- layout ---------- */
+  .app {
+    display: grid;
+    grid-template-columns: 320px minmax(0, 1fr);
+    grid-template-rows: auto 1fr;
+    grid-template-areas: "head head" "side main";
+    height: 100%;
+  }
+
+  header {
+    grid-area: head;
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    padding: 12px 20px;
+    background: var(--green);
+    color: #fff;
+    box-shadow: var(--shadow);
+    z-index: 5;
+    min-width: 0;
+  }
+  header h1 { font-size: 19px; letter-spacing: 0.3px; white-space: nowrap; }
+  header .logo { font-size: 24px; }
+  .garden-name {
+    background: rgba(255,255,255,0.15);
+    border: 1px solid rgba(255,255,255,0.3);
+    border-radius: 8px;
+    padding: 6px 10px;
+    color: #fff;
+    width: 220px;
+    min-width: 0;
+    flex-shrink: 1;
+  }
+  .garden-name::placeholder { color: rgba(255,255,255,0.7); }
+  .spacer { flex: 1; }
+  .save-note { font-size: 12px; opacity: 0.85; white-space: nowrap; }
+  .menu-btn { display: none; }
+
+  /* ---------- sidebar ---------- */
+  aside {
+    grid-area: side;
+    background: var(--panel);
+    border-right: 1px solid var(--line);
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+  }
+  .side-head { padding: 14px 14px 10px; border-bottom: 1px solid var(--line); }
+  .side-head h2 { font-size: 14px; text-transform: uppercase; letter-spacing: 1px; color: var(--muted); margin-bottom: 10px; }
+
+  .search-wrap { position: relative; }
+  .search-wrap .icon { position: absolute; left: 10px; top: 50%; transform: translateY(-50%); opacity: 0.5; font-size: 14px; }
+  #search {
+    width: 100%;
+    padding: 10px 30px 10px 32px;
+    border: 1px solid var(--line);
+    border-radius: 999px;
+    background: #fbfaf5;
+    outline: none;
+  }
+  #search:focus { border-color: var(--green); background: #fff; }
+  #search::-webkit-search-cancel-button,
+  #search::-webkit-search-decoration { -webkit-appearance: none; display: none; }
+  .clear-search {
+    position: absolute; right: 8px; top: 50%; transform: translateY(-50%);
+    width: 20px; height: 20px; border-radius: 50%; line-height: 18px;
+    text-align: center; font-size: 14px; color: var(--muted); display: none;
+  }
+  .clear-search:hover { background: var(--line); }
+
+  .chips { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; }
+  .chip {
+    padding: 5px 11px; border-radius: 999px; font-size: 12.5px;
+    border: 1px solid var(--line); background: #fbfaf5; color: var(--muted);
+  }
+  .chip.on { background: var(--green); border-color: var(--green); color: #fff; }
+
+  .plant-list { flex: 1; overflow-y: auto; padding: 8px; min-height: 0; }
+  .group-label {
+    font-size: 11px; text-transform: uppercase; letter-spacing: 1px;
+    color: var(--muted); padding: 10px 8px 6px;
+  }
+  .plant-row {
+    display: flex; align-items: center; gap: 10px; width: 100%;
+    padding: 8px 10px; border-radius: 10px; text-align: left;
+  }
+  .plant-row:hover { background: #f1f4ec; }
+  .plant-row.on { background: #e5efdd; box-shadow: inset 0 0 0 2px var(--green); }
+  .plant-row .em { font-size: 20px; width: 26px; text-align: center; }
+  .plant-row .nm { font-size: 14px; }
+  .plant-row .sub { font-size: 11.5px; color: var(--muted); }
+  .plant-row .meta { flex: 1; min-width: 0; display: block; }
+  .plant-row .nm, .plant-row .sub {
+    display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  }
+  .swatch { width: 10px; height: 24px; border-radius: 4px; flex: none; }
+  .empty-msg { padding: 24px 14px; text-align: center; color: var(--muted); font-size: 13.5px; }
+
+  .detail {
+    border-top: 1px solid var(--line);
+    padding: 12px 14px;
+    background: #fbfaf5;
+    max-height: 42%;
+    overflow-y: auto;
+  }
+  .detail h3 { font-size: 15px; display: flex; align-items: center; gap: 8px; }
+  .detail .facts { display: grid; grid-template-columns: 1fr 1fr; gap: 6px 10px; margin: 10px 0; }
+  .fact { font-size: 12px; color: var(--muted); }
+  .fact b { display: block; color: var(--ink); font-size: 13px; font-weight: 600; }
+  .detail p { font-size: 12.5px; color: var(--muted); line-height: 1.5; }
+  .detail p + p { margin-top: 6px; }
+
+  /* ---------- main ---------- */
+  main { grid-area: main; overflow-y: auto; padding: 18px; min-height: 0; min-width: 0; }
+  .card {
+    background: var(--panel);
+    border: 1px solid var(--line);
+    border-radius: var(--radius);
+    box-shadow: var(--shadow);
+    padding: 16px;
+    margin-bottom: 16px;
+  }
+  .card > h2 {
+    font-size: 13px; text-transform: uppercase; letter-spacing: 1px;
+    color: var(--muted); margin-bottom: 12px;
+  }
+
+  .size-row { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 14px; }
+  .field label { display: block; font-size: 12px; color: var(--muted); margin-bottom: 5px; }
+  .stepper { display: flex; align-items: center; border: 1px solid var(--line); border-radius: 10px; overflow: hidden; }
+  .stepper button { width: 34px; height: 38px; font-size: 18px; color: var(--muted); background: #fbfaf5; }
+  .stepper button:hover { background: #eef1e8; color: var(--green); }
+  .stepper input { width: 62px; height: 38px; border: none; text-align: center; outline: none; background: #fff; }
+  .times { color: var(--muted); padding-bottom: 10px; }
+
+  .btn {
+    padding: 9px 16px; border-radius: 10px; font-size: 14px;
+    background: var(--green); color: #fff; font-weight: 600;
+  }
+  .btn:hover { background: var(--green-dark); }
+  .btn.ghost { background: #fbfaf5; color: var(--ink); border: 1px solid var(--line); font-weight: 500; }
+  .btn.ghost:hover { background: #eef1e8; }
+  .btn.ghost.on { background: var(--accent); border-color: var(--accent); color: #fff; }
+  .btn.sm { padding: 7px 12px; font-size: 13px; }
+
+  .presets { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 12px; align-items: center; }
+  .presets span { font-size: 12px; color: var(--muted); margin-right: 4px; }
+
+  .toolbar { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-bottom: 12px; }
+  .active-plant {
+    display: flex; align-items: center; gap: 8px;
+    padding: 7px 12px; border-radius: 999px;
+    background: #e5efdd; border: 1px solid #cadfbc; font-size: 13.5px;
+  }
+  .active-plant.none { background: #fbfaf5; border-color: var(--line); color: var(--muted); }
+
+  .bed-scroll { overflow-x: auto; overflow-y: hidden; padding-bottom: 6px; max-width: 100%; }
+  .bed-frame { display: inline-block; padding: 26px 0 0 26px; position: relative; }
+
+  #bed {
+    position: relative;
+    background-color: #a9825f;
+    background-image:
+      linear-gradient(rgba(255,255,255,0.22) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(255,255,255,0.22) 1px, transparent 1px),
+      radial-gradient(circle at 30% 40%, rgba(0,0,0,0.10) 0 2px, transparent 3px),
+      radial-gradient(circle at 70% 70%, rgba(0,0,0,0.08) 0 2px, transparent 3px);
+    background-size: var(--cell) var(--cell), var(--cell) var(--cell), 17px 17px, 23px 23px;
+    border: 4px solid var(--soil);
+    border-radius: 6px;
+    cursor: crosshair;
+    touch-action: none;
+    box-shadow: inset 0 0 22px rgba(0,0,0,0.22);
+  }
+  #bed.erasing { cursor: not-allowed; }
+
+  .ruler { position: absolute; color: var(--muted); font-size: 10px; }
+  .ruler.top { top: 8px; left: 30px; display: flex; }
+  .ruler.left { left: 6px; top: 30px; }
+  .ruler .tick { width: var(--cell); height: 14px; text-align: center; overflow: hidden; }
+  .ruler.left .tick { width: 18px; height: var(--cell); line-height: var(--cell); }
+
+  .plant {
+    position: absolute;
+    display: flex; align-items: center; justify-content: center;
+    border-radius: 8px;
+    border: 1.5px solid rgba(255,255,255,0.65);
+    box-shadow: 0 1px 4px rgba(0,0,0,0.25);
+    overflow: hidden;
+    transition: transform 0.08s;
+  }
+  .plant span { font-size: calc(var(--cell) * 0.62); line-height: 1; pointer-events: none; }
+  .plant.big span { font-size: calc(var(--cell) * 1.0); }
+  .plant:hover { transform: scale(1.04); z-index: 3; }
+
+  .preview {
+    position: absolute; pointer-events: none;
+    border: 2px dashed rgba(255,255,255,0.9);
+    border-radius: 8px;
+    background: rgba(255,255,255,0.22);
+    display: flex; align-items: center; justify-content: center;
+    font-size: calc(var(--cell) * 0.6);
+    z-index: 4;
+  }
+  .preview.bad { border-color: #ff6b6b; background: rgba(255,80,80,0.28); }
+  .preview.hidden { display: none; }
+
+  .legend { display: flex; flex-wrap: wrap; gap: 8px; }
+  .legend-item {
+    display: flex; align-items: center; gap: 8px;
+    padding: 6px 10px; border-radius: 999px;
+    border: 1px solid var(--line); background: #fbfaf5; font-size: 13px;
+  }
+  .legend-item .dot { width: 12px; height: 12px; border-radius: 50%; }
+  .legend-item .ct { color: var(--muted); font-size: 12px; }
+  .legend-item button { color: var(--muted); font-size: 15px; line-height: 1; padding: 0 2px; }
+  .legend-item button:hover { color: #c0392b; }
+
+  .stats { display: flex; gap: 20px; flex-wrap: wrap; margin-bottom: 12px; }
+  .stat b { display: block; font-size: 20px; }
+  .stat span { font-size: 12px; color: var(--muted); }
+
+  .hint { font-size: 12.5px; color: var(--muted); margin-top: 10px; }
+
+  .backdrop { display: none; }
+
+  @media (max-width: 860px) {
+    .app { grid-template-columns: minmax(0, 1fr); grid-template-areas: "head" "main"; }
+    aside {
+      position: fixed; top: 0; left: 0; bottom: 0; width: 300px; max-width: 86vw;
+      z-index: 20; transform: translateX(-102%); transition: transform 0.22s ease;
+      box-shadow: 4px 0 20px rgba(0,0,0,0.2);
+    }
+    aside.open { transform: none; }
+    .menu-btn { display: block; font-size: 20px; color: #fff; }
+    header h1 { font-size: 16px; }
+    .save-note { display: none; }
+    .backdrop.show {
+      display: block; position: fixed; inset: 0; background: rgba(0,0,0,0.35); z-index: 15;
+    }
+    main { padding: 12px; }
+  }
+</style>
+</head>
+<body>
+<div class="app">
+  <header>
+    <button class="menu-btn" id="menuBtn" aria-label="Open plant menu">☰</button>
+    <span class="logo">🌱</span>
+    <h1>Garden Planner</h1>
+    <input class="garden-name" id="gardenName" placeholder="Name your garden" maxlength="40">
+    <div class="spacer"></div>
+    <span class="save-note" id="saveNote"></span>
+  </header>
+
+  <aside id="sidebar">
+    <div class="side-head">
+      <h2>Plant Library</h2>
+      <div class="search-wrap">
+        <span class="icon">🔍</span>
+        <input id="search" type="search" placeholder="Search vegetables, herbs, fruits…" autocomplete="off">
+        <button class="clear-search" id="clearSearch" aria-label="Clear search">✕</button>
+      </div>
+      <div class="chips" id="chips"></div>
+    </div>
+    <div class="plant-list" id="plantList"></div>
+    <div class="detail" id="detail"></div>
+  </aside>
+  <div class="backdrop" id="backdrop"></div>
+
+  <main>
+    <section class="card">
+      <h2>Garden Size</h2>
+      <div class="size-row">
+        <div class="field">
+          <label for="wIn">Width (ft)</label>
+          <div class="stepper">
+            <button data-step="w:-1" aria-label="Decrease width">−</button>
+            <input id="wIn" type="number" min="1" max="60" value="12">
+            <button data-step="w:1" aria-label="Increase width">+</button>
+          </div>
+        </div>
+        <span class="times">×</span>
+        <div class="field">
+          <label for="hIn">Depth (ft)</label>
+          <div class="stepper">
+            <button data-step="h:-1" aria-label="Decrease depth">−</button>
+            <input id="hIn" type="number" min="1" max="60" value="10">
+            <button data-step="h:1" aria-label="Increase depth">+</button>
+          </div>
+        </div>
+        <button class="btn" id="applySize">Apply size</button>
+        <div class="stat" style="margin-left:auto">
+          <b id="areaOut">120 sq ft</b>
+          <span>total bed area</span>
+        </div>
+      </div>
+      <div class="presets" id="presets">
+        <span>Presets:</span>
+      </div>
+    </section>
+
+    <section class="card">
+      <h2>Your Garden</h2>
+      <div class="toolbar">
+        <div class="active-plant none" id="activeChip">No plant selected</div>
+        <button class="btn ghost sm" id="eraseBtn">🧽 Erase</button>
+        <button class="btn ghost sm" id="undoBtn">↩ Undo</button>
+        <button class="btn ghost sm" id="zoomOut">−</button>
+        <button class="btn ghost sm" id="zoomIn">+</button>
+        <button class="btn ghost sm" id="clearBtn">Clear bed</button>
+      </div>
+      <div class="bed-scroll">
+        <div class="bed-frame">
+          <div class="ruler top" id="rulerTop"></div>
+          <div class="ruler left" id="rulerLeft"></div>
+          <div id="bed">
+            <div class="preview hidden" id="ghost"></div>
+          </div>
+        </div>
+      </div>
+      <p class="hint">Each square is 1 ft². Pick a plant from the side menu, then click or drag on the bed to plant it. Plants take up the space they need — a tomato claims 2×2 ft. Click a planted square with <b>Erase</b> on to pull it out.</p>
+    </section>
+
+    <section class="card">
+      <h2>Planting Summary</h2>
+      <div class="stats">
+        <div class="stat"><b id="totalPlants">0</b><span>plants</span></div>
+        <div class="stat"><b id="usedArea">0 sq ft</b><span>space used</span></div>
+        <div class="stat"><b id="freeArea">0 sq ft</b><span>space left</span></div>
+        <div class="stat"><b id="varietyCt">0</b><span>varieties</span></div>
+      </div>
+      <div class="legend" id="legend"></div>
+    </section>
+  </main>
+</div>
+
+<script>
+/* ---------------- plant library ---------------- */
+const PLANTS = [
+  // vegetables
+  { k:'tomato', n:'Tomato', e:'🍅', c:'Vegetable', sp:24, sun:'Full sun', days:'70–85 days', depth:'1/4 in', col:'#e05c4b', alias:'beefsteak slicing', note:'Needs a cage or stake. Water deeply and evenly to avoid blossom end rot.', comp:'Basil, marigold, carrot' },
+  { k:'cherrytomato', n:'Cherry Tomato', e:'🍅', c:'Vegetable', sp:24, sun:'Full sun', days:'60–70 days', depth:'1/4 in', col:'#e8705f', alias:'grape sungold', note:'Faster and more forgiving than slicers. Keeps producing until frost.', comp:'Basil, borage, lettuce' },
+  { k:'pepper', n:'Bell Pepper', e:'🫑', c:'Vegetable', sp:18, sun:'Full sun', days:'70–90 days', depth:'1/4 in', col:'#5aa64a', alias:'sweet capsicum', note:'Loves heat. Leave fruit on the plant longer to ripen red or yellow.', comp:'Basil, onion, spinach' },
+  { k:'chili', n:'Hot Pepper', e:'🌶️', c:'Vegetable', sp:18, sun:'Full sun', days:'75–95 days', depth:'1/4 in', col:'#cf3b2f', alias:'chilli jalapeno cayenne spicy', note:'Heat level climbs when plants are kept slightly dry.', comp:'Basil, carrot, oregano' },
+  { k:'cucumber', n:'Cucumber', e:'🥒', c:'Vegetable', sp:18, sun:'Full sun', days:'50–70 days', depth:'1 in', col:'#4f9e5a', alias:'pickling slicing vine', note:'Grow up a trellis to save floor space and get straighter fruit.', comp:'Bean, corn, dill' },
+  { k:'zucchini', n:'Zucchini', e:'🥒', c:'Vegetable', sp:36, sun:'Full sun', days:'50–60 days', depth:'1 in', col:'#3f8a4e', alias:'courgette summer squash', note:'One or two plants feed a household. Pick at 6–8 in.', comp:'Corn, nasturtium, bean' },
+  { k:'squash', n:'Winter Squash', e:'🎃', c:'Vegetable', sp:48, sun:'Full sun', days:'80–110 days', depth:'1 in', col:'#d98a3b', alias:'butternut acorn', note:'Long vines. Give it a corner it can sprawl out of.', comp:'Corn, bean, marigold' },
+  { k:'pumpkin', n:'Pumpkin', e:'🎃', c:'Vegetable', sp:60, sun:'Full sun', days:'95–120 days', depth:'1 in', col:'#e08b2c', alias:'jack o lantern gourd', note:'The biggest space hog in the garden. Plant on the edge of the bed.', comp:'Corn, bean, oregano' },
+  { k:'eggplant', n:'Eggplant', e:'🍆', c:'Vegetable', sp:24, sun:'Full sun', days:'70–85 days', depth:'1/4 in', col:'#7d4a9e', alias:'aubergine brinjal', note:'Wants the hottest spot you have. Harvest when skin is glossy.', comp:'Bean, pepper, thyme' },
+  { k:'carrot', n:'Carrot', e:'🥕', c:'Vegetable', sp:3, sun:'Full sun', days:'60–80 days', depth:'1/4 in', col:'#e8892b', alias:'root nantes', note:'Needs loose, stone-free soil. Thin seedlings or roots stay stubby.', comp:'Onion, leek, rosemary' },
+  { k:'radish', n:'Radish', e:'🔴', c:'Vegetable', sp:3, sun:'Full sun', days:'22–30 days', depth:'1/2 in', col:'#d94f6a', alias:'fast quick root', note:'The fastest crop here. Great filler between slower plants.', comp:'Carrot, spinach, cucumber' },
+  { k:'beet', n:'Beet', e:'🟣', c:'Vegetable', sp:4, sun:'Full sun', days:'50–70 days', depth:'1/2 in', col:'#9b3b6a', alias:'beetroot root greens', note:'Two crops in one — roots and edible greens.', comp:'Onion, lettuce, cabbage' },
+  { k:'turnip', n:'Turnip', e:'⚪', c:'Vegetable', sp:4, sun:'Full sun', days:'40–55 days', depth:'1/2 in', col:'#b8a9c4', alias:'root brassica', note:'Best flavour in cool weather. Sow in spring or late summer.', comp:'Pea, thyme, mint' },
+  { k:'parsnip', n:'Parsnip', e:'🥕', c:'Vegetable', sp:4, sun:'Full sun', days:'110–130 days', depth:'1/2 in', col:'#d9cfa3', alias:'root sweet', note:'Sweetens after a frost. Occupies its square all season.', comp:'Onion, radish, pea' },
+  { k:'potato', n:'Potato', e:'🥔', c:'Vegetable', sp:12, sun:'Full sun', days:'80–100 days', depth:'4 in', col:'#c2a066', alias:'spud tuber', note:'Hill soil over the stems as they grow for a bigger crop.', comp:'Bean, corn, horseradish' },
+  { k:'sweetpotato', n:'Sweet Potato', e:'🍠', c:'Vegetable', sp:18, sun:'Full sun', days:'90–120 days', depth:'slips', col:'#d97b45', alias:'yam vine tuber', note:'Heat lover with sprawling vines. Cure roots after harvest.', comp:'Bean, thyme, oregano' },
+  { k:'onion', n:'Onion', e:'🧅', c:'Vegetable', sp:4, sun:'Full sun', days:'90–110 days', depth:'1 in', col:'#c9a86c', alias:'bulb allium', note:'Bulb size depends on day length — match the variety to your latitude.', comp:'Carrot, beet, lettuce' },
+  { k:'garlic', n:'Garlic', e:'🧄', c:'Vegetable', sp:6, sun:'Full sun', days:'240 days', depth:'2 in', col:'#e3ddc8', alias:'allium clove', note:'Plant cloves in autumn, harvest mid-summer. Long occupancy.', comp:'Tomato, carrot, rose' },
+  { k:'leek', n:'Leek', e:'🧅', c:'Vegetable', sp:6, sun:'Full sun', days:'100–120 days', depth:'1/2 in', col:'#8fbf74', alias:'allium', note:'Mound soil around the stems to blanch them white.', comp:'Carrot, celery, strawberry' },
+  { k:'lettuce', n:'Lettuce', e:'🥬', c:'Vegetable', sp:8, sun:'Sun / part shade', days:'45–60 days', depth:'1/4 in', col:'#7fb85c', alias:'salad greens romaine butterhead', note:'Cut outer leaves and it keeps growing. Bolts in summer heat.', comp:'Carrot, radish, cucumber' },
+  { k:'spinach', n:'Spinach', e:'🥬', c:'Vegetable', sp:6, sun:'Sun / part shade', days:'40–50 days', depth:'1/2 in', col:'#3f7d3a', alias:'greens leafy', note:'A cool-season crop — sow early spring and again in autumn.', comp:'Strawberry, pea, radish' },
+  { k:'kale', n:'Kale', e:'🥬', c:'Vegetable', sp:18, sun:'Full sun', days:'55–75 days', depth:'1/2 in', col:'#456e3d', alias:'greens brassica lacinato', note:'Survives hard frost and tastes sweeter after one.', comp:'Beet, onion, dill' },
+  { k:'chard', n:'Swiss Chard', e:'🥬', c:'Vegetable', sp:12, sun:'Sun / part shade', days:'50–60 days', depth:'1/2 in', col:'#c0553f', alias:'greens rainbow silverbeet', note:'Harvest outer stalks for months from a single plant.', comp:'Bean, onion, cabbage' },
+  { k:'cabbage', n:'Cabbage', e:'🥬', c:'Vegetable', sp:18, sun:'Full sun', days:'70–100 days', depth:'1/2 in', col:'#8fae74', alias:'brassica head', note:'Heavy feeder. Watch for cabbage worms under the leaves.', comp:'Dill, mint, onion' },
+  { k:'broccoli', n:'Broccoli', e:'🥦', c:'Vegetable', sp:18, sun:'Full sun', days:'60–90 days', depth:'1/2 in', col:'#4c8a4a', alias:'brassica florets', note:'Cut the main head and side shoots keep coming.', comp:'Onion, celery, chamomile' },
+  { k:'cauliflower', n:'Cauliflower', e:'🥦', c:'Vegetable', sp:20, sun:'Full sun', days:'70–90 days', depth:'1/2 in', col:'#ded9c0', alias:'brassica head white', note:'Fussy about steady moisture. Tie leaves over the head to keep it white.', comp:'Bean, celery, thyme' },
+  { k:'brussels', n:'Brussels Sprouts', e:'🥬', c:'Vegetable', sp:24, sun:'Full sun', days:'100–130 days', depth:'1/2 in', col:'#6d9455', alias:'brassica sprouts', note:'Long season, tall plant. Harvest from the bottom up after frost.', comp:'Onion, dill, mint' },
+  { k:'bokchoy', n:'Bok Choy', e:'🥬', c:'Vegetable', sp:8, sun:'Sun / part shade', days:'45–55 days', depth:'1/4 in', col:'#9dc470', alias:'pak choi asian greens brassica', note:'Quick cool-season crop. Bolts if planted too late in spring.', comp:'Beet, carrot, onion' },
+  { k:'arugula', n:'Arugula', e:'🌿', c:'Vegetable', sp:6, sun:'Sun / part shade', days:'30–40 days', depth:'1/4 in', col:'#6fa84f', alias:'rocket salad greens peppery', note:'Peppery salad green, ready in a month. Sow every 2 weeks.', comp:'Lettuce, carrot, bush bean' },
+  { k:'celery', n:'Celery', e:'🥬', c:'Vegetable', sp:8, sun:'Sun / part shade', days:'100–120 days', depth:'1/8 in', col:'#a3c96a', alias:'stalk', note:'Thirsty and slow. Never let the soil dry out.', comp:'Cabbage, bean, tomato' },
+  { k:'pea', n:'Peas', e:'🫛', c:'Vegetable', sp:3, sun:'Full sun', days:'55–70 days', depth:'1 in', col:'#7dbf58', alias:'snap snow shelling legume', note:'Sow as soon as soil can be worked. Give it something to climb.', comp:'Carrot, radish, cucumber' },
+  { k:'bean', n:'Green Beans', e:'🫘', c:'Vegetable', sp:4, sun:'Full sun', days:'50–65 days', depth:'1 in', col:'#5c9e46', alias:'bush pole snap legume', note:'Fixes nitrogen in the soil. Pick often to keep pods coming.', comp:'Corn, squash, carrot' },
+  { k:'corn', n:'Sweet Corn', e:'🌽', c:'Vegetable', sp:12, sun:'Full sun', days:'70–90 days', depth:'1.5 in', col:'#e0c04a', alias:'maize', note:'Plant in a block, not a row, so it pollinates properly.', comp:'Bean, squash, cucumber' },
+  { k:'asparagus', n:'Asparagus', e:'🌱', c:'Vegetable', sp:18, sun:'Full sun', days:'2–3 years', depth:'6 in', col:'#78a85f', alias:'perennial crown spears', note:'Perennial — pick a permanent spot. No harvest for the first two years.', comp:'Tomato, parsley, basil' },
+  { k:'okra', n:'Okra', e:'🌿', c:'Vegetable', sp:18, sun:'Full sun', days:'55–65 days', depth:'1/2 in', col:'#6b9e3f', alias:'gumbo pods heat', note:'Thrives in serious heat. Harvest pods young at 3 in.', comp:'Pepper, basil, melon' },
+  { k:'artichoke', n:'Artichoke', e:'🌵', c:'Vegetable', sp:48, sun:'Full sun', days:'85–100 days', depth:'1/4 in', col:'#7f9e8c', alias:'globe perennial thistle', note:'A big architectural plant. Perennial in mild winters.', comp:'Pea, cabbage, sunflower' },
+  { k:'pumpkinleaf', n:'Watermelon Radish', e:'🔴', c:'Vegetable', sp:4, sun:'Full sun', days:'55–65 days', depth:'1/2 in', col:'#d9738f', alias:'radish winter root', note:'A larger, slower radish for autumn sowing.', comp:'Spinach, pea, lettuce' },
+
+  // herbs
+  { k:'basil', n:'Basil', e:'🌿', c:'Herb', sp:12, sun:'Full sun', days:'60–75 days', depth:'1/4 in', col:'#4f9e3f', alias:'genovese thai sweet', note:'Pinch flower buds to keep leaves coming. Hates cold nights.', comp:'Tomato, pepper, oregano' },
+  { k:'parsley', n:'Parsley', e:'🌿', c:'Herb', sp:9, sun:'Sun / part shade', days:'70–90 days', depth:'1/4 in', col:'#3f8a4a', alias:'flat leaf curly biennial', note:'Slow to germinate — soak seed overnight first.', comp:'Tomato, asparagus, corn' },
+  { k:'cilantro', n:'Cilantro', e:'🌿', c:'Herb', sp:6, sun:'Sun / part shade', days:'45–70 days', depth:'1/4 in', col:'#6bb04f', alias:'coriander dhania', note:'Bolts fast in heat. Sow a small batch every few weeks.', comp:'Spinach, tomato, anise' },
+  { k:'dill', n:'Dill', e:'🌿', c:'Herb', sp:12, sun:'Full sun', days:'40–60 days', depth:'1/4 in', col:'#8fbf5a', alias:'feathery pickling', note:'Attracts beneficial wasps. Reseeds itself happily.', comp:'Cabbage, onion, cucumber' },
+  { k:'mint', n:'Mint', e:'🌿', c:'Herb', sp:18, sun:'Sun / part shade', days:'60 days', depth:'1/4 in', col:'#4fbf8a', alias:'peppermint spearmint invasive', note:'Runs everywhere. Sink a pot in the bed to contain the roots.', comp:'Cabbage, tomato, brassicas' },
+  { k:'rosemary', n:'Rosemary', e:'🌲', c:'Herb', sp:24, sun:'Full sun', days:'perennial', depth:'cutting', col:'#5f8a6f', alias:'woody evergreen shrub', note:'Wants sharp drainage and dislikes wet feet in winter.', comp:'Cabbage, bean, carrot' },
+  { k:'thyme', n:'Thyme', e:'🌿', c:'Herb', sp:9, sun:'Full sun', days:'perennial', depth:'surface', col:'#7f9e5f', alias:'creeping woody ground', note:'Low, spreading, drought-tolerant. Great edge planting.', comp:'Cabbage, strawberry, tomato' },
+  { k:'oregano', n:'Oregano', e:'🌿', c:'Herb', sp:12, sun:'Full sun', days:'perennial', depth:'surface', col:'#6f9e4f', alias:'greek marjoram perennial', note:'Flavour gets stronger in poor, dry soil.', comp:'Pepper, tomato, bean' },
+  { k:'sage', n:'Sage', e:'🌿', c:'Herb', sp:18, sun:'Full sun', days:'perennial', depth:'1/4 in', col:'#8fa88f', alias:'woody grey shrub', note:'Woody perennial. Cut back hard in spring to keep it tidy.', comp:'Cabbage, carrot, rosemary' },
+  { k:'chives', n:'Chives', e:'🧅', c:'Herb', sp:6, sun:'Full sun', days:'60–80 days', depth:'1/4 in', col:'#6fbf7f', alias:'allium onion perennial', note:'Perennial clump with edible purple flowers.', comp:'Carrot, tomato, apple' },
+  { k:'lavender', n:'Lavender', e:'💜', c:'Herb', sp:24, sun:'Full sun', days:'perennial', depth:'surface', col:'#9b8fc4', alias:'pollinator fragrant shrub', note:'Pollinator magnet. Needs dry feet and full sun.', comp:'Rosemary, sage, thyme' },
+  { k:'tarragon', n:'Tarragon', e:'🌿', c:'Herb', sp:18, sun:'Full sun', days:'perennial', depth:'cutting', col:'#7fa86f', alias:'french anise perennial', note:'Buy French tarragon as a plant — Russian seed is flavourless.', comp:'Eggplant, pepper, tomato' },
+  { k:'lemonbalm', n:'Lemon Balm', e:'🍋', c:'Herb', sp:18, sun:'Sun / part shade', days:'perennial', depth:'surface', col:'#a8c46f', alias:'melissa citrus mint', note:'Spreads like its mint cousin. Lovely in tea.', comp:'Squash, tomato, brassicas' },
+  { k:'fennel', n:'Fennel', e:'🌿', c:'Herb', sp:12, sun:'Full sun', days:'80–100 days', depth:'1/4 in', col:'#b8c46f', alias:'bulb anise florence', note:'Keep it away from most vegetables — it inhibits their growth.', comp:'Plant on its own' },
+  { k:'marjoram', n:'Marjoram', e:'🌿', c:'Herb', sp:9, sun:'Full sun', days:'60–70 days', depth:'surface', col:'#8fb85f', alias:'sweet oregano', note:'Sweeter and milder than oregano. Tender in cold winters.', comp:'Pepper, bean, squash' },
+  { k:'bay', n:'Bay Laurel', e:'🌳', c:'Herb', sp:36, sun:'Full sun', days:'perennial', depth:'cutting', col:'#4f7a4f', alias:'laurel tree evergreen', note:'Slow-growing shrub. Container-grow it where winters freeze.', comp:'Bean, brassicas' },
+
+  // fruits
+  { k:'strawberry', n:'Strawberry', e:'🍓', c:'Fruit', sp:12, sun:'Full sun', days:'perennial', depth:'crown level', col:'#e04f6a', alias:'berry runner june everbearing', note:'Sends out runners — pin them down for free plants.', comp:'Spinach, lettuce, borage' },
+  { k:'blueberry', n:'Blueberry', e:'🫐', c:'Fruit', sp:48, sun:'Full sun', days:'perennial', depth:'shrub', col:'#4a6fb8', alias:'berry bush acid', note:'Needs acidic soil (pH 4.5–5.5). Plant two varieties for better fruit.', comp:'Thyme, strawberry, rhododendron' },
+  { k:'raspberry', n:'Raspberry', e:'🍇', c:'Fruit', sp:24, sun:'Full sun', days:'perennial', depth:'cane', col:'#c04a6f', alias:'cane berry bramble', note:'Canes fruit in their second year. Trellis them in a row.', comp:'Garlic, chives, marigold' },
+  { k:'blackberry', n:'Blackberry', e:'🫐', c:'Fruit', sp:36, sun:'Full sun', days:'perennial', depth:'cane', col:'#4a3f5f', alias:'cane berry bramble thornless', note:'Vigorous. Give it a fence line and prune hard each year.', comp:'Garlic, tansy, mint' },
+  { k:'currant', n:'Currant', e:'🫐', c:'Fruit', sp:36, sun:'Sun / part shade', days:'perennial', depth:'shrub', col:'#8a2f4a', alias:'berry black red bush ribes', note:'Tolerates more shade than most fruit. Very hardy.', comp:'Chives, garlic, nasturtium' },
+  { k:'gooseberry', n:'Gooseberry', e:'🫐', c:'Fruit', sp:36, sun:'Sun / part shade', days:'perennial', depth:'shrub', col:'#8fa84f', alias:'berry bush ribes tart', note:'Thorny but productive. Prune to an open goblet shape.', comp:'Chives, tomato, comfrey' },
+  { k:'grape', n:'Grape Vine', e:'🍇', c:'Fruit', sp:72, sun:'Full sun', days:'perennial', depth:'vine', col:'#7a4a9e', alias:'vine table wine arbor', note:'Wants a sturdy arbor or wire and a hard annual prune.', comp:'Hyssop, basil, clover' },
+  { k:'watermelon', n:'Watermelon', e:'🍉', c:'Fruit', sp:60, sun:'Full sun', days:'80–100 days', depth:'1 in', col:'#3f9e5a', alias:'melon vine sprawling', note:'Huge sprawling vines and a long hot season needed.', comp:'Corn, radish, nasturtium' },
+  { k:'cantaloupe', n:'Cantaloupe', e:'🍈', c:'Fruit', sp:36, sun:'Full sun', days:'75–90 days', depth:'1 in', col:'#e0a45f', alias:'melon muskmelon vine', note:'Ripe when the stem slips off the fruit with light pressure.', comp:'Corn, bean, oregano' },
+  { k:'honeydew', n:'Honeydew', e:'🍈', c:'Fruit', sp:36, sun:'Full sun', days:'80–95 days', depth:'1 in', col:'#b8d98f', alias:'melon vine sweet', note:'Like cantaloupe but slower. Mulch to keep fruit off soil.', comp:'Corn, radish, marigold' },
+  { k:'rhubarb', n:'Rhubarb', e:'🌱', c:'Fruit', sp:36, sun:'Sun / part shade', days:'perennial', depth:'crown', col:'#c04a5f', alias:'stalk perennial pie', note:'Perennial for 10+ years. Never eat the leaves — only stalks.', comp:'Garlic, onion, brassicas' },
+  { k:'apple', n:'Apple Tree (dwarf)', e:'🍎', c:'Fruit', sp:96, sun:'Full sun', days:'perennial', depth:'tree', col:'#c0392b', alias:'tree orchard pome dwarf', note:'Dwarf rootstock stays around 8 ft. Plant two for pollination.', comp:'Chives, nasturtium, comfrey' },
+  { k:'pear', n:'Pear Tree (dwarf)', e:'🍐', c:'Fruit', sp:96, sun:'Full sun', days:'perennial', depth:'tree', col:'#9eb84a', alias:'tree orchard pome dwarf', note:'Needs a second variety nearby to set fruit well.', comp:'Chive, clover, borage' },
+  { k:'peach', n:'Peach Tree (dwarf)', e:'🍑', c:'Fruit', sp:96, sun:'Full sun', days:'perennial', depth:'tree', col:'#e08a6f', alias:'tree stone orchard dwarf', note:'Self-fertile. Thin the young fruit for bigger peaches.', comp:'Garlic, tansy, basil' },
+  { k:'cherry', n:'Cherry Tree (dwarf)', e:'🍒', c:'Fruit', sp:96, sun:'Full sun', days:'perennial', depth:'tree', col:'#a02f3f', alias:'tree stone orchard dwarf sour sweet', note:'Net it before the birds find it — they always do.', comp:'Chives, marigold, clover' },
+  { k:'lemon', n:'Lemon Tree', e:'🍋', c:'Fruit', sp:72, sun:'Full sun', days:'perennial', depth:'tree', col:'#e0c44a', alias:'citrus tree meyer container', note:'Grow in a pot and bring it indoors where winters freeze.', comp:'Basil, marigold, comfrey' },
+  { k:'orange', n:'Orange Tree', e:'🍊', c:'Fruit', sp:96, sun:'Full sun', days:'perennial', depth:'tree', col:'#e0862b', alias:'citrus tree', note:'Frost-tender citrus for zone 9+ or a large container.', comp:'Marigold, clover, lavender' },
+  { k:'fig', n:'Fig Tree', e:'🍈', c:'Fruit', sp:96, sun:'Full sun', days:'perennial', depth:'tree', col:'#7a5a8a', alias:'tree mediterranean', note:'Fruits best when the roots are a bit restricted.', comp:'Rue, strawberry, thyme' },
+  { k:'kiwi', n:'Hardy Kiwi', e:'🥝', c:'Fruit', sp:96, sun:'Full sun', days:'perennial', depth:'vine', col:'#7fa83f', alias:'vine arbor hardy', note:'Vigorous vine needing a strong structure and a male plant.', comp:'Comfrey, clover' },
+  { k:'pineapple', n:'Pineapple', e:'🍍', c:'Fruit', sp:24, sun:'Full sun', days:'18–24 months', depth:'crown', col:'#d9a83f', alias:'tropical bromeliad container', note:'Start from a supermarket crown. Very slow but fun.', comp:'Grow on its own' },
+  { k:'banana', n:'Banana', e:'🍌', c:'Fruit', sp:96, sun:'Full sun', days:'perennial', depth:'pup', col:'#e0c25f', alias:'tropical clump', note:'Tropical clumping plant. Needs shelter from wind.', comp:'Sweet potato, ginger' }
+];
+
+const CATS = ['All', 'Vegetable', 'Herb', 'Fruit'];
+const PRESETS = [
+  { n:'Raised bed 4×8', w:8, h:4 },
+  { n:'Small plot 10×10', w:10, h:10 },
+  { n:'Family plot 12×16', w:16, h:12 },
+  { n:'Big garden 20×30', w:30, h:20 }
+];
+
+/* ---------------- state ---------------- */
+const KEY = 'gardenPlanner.v1';
+const memStore = {};
+function loadState() {
+  try {
+    const raw = localStorage.getItem(KEY);
+    return raw ? JSON.parse(raw) : null;
+  } catch (err) {
+    return memStore[KEY] ? JSON.parse(memStore[KEY]) : null;
+  }
+}
+function saveState() {
+  const raw = JSON.stringify(state);
+  try { localStorage.setItem(KEY, raw); }
+  catch (err) { memStore[KEY] = raw; }
+  flashSaved();
+}
+
+const state = Object.assign({
+  name: '',
+  w: 12,
+  h: 10,
+  placed: []          // { id, k, x, y, s }
+}, loadState() || {});
+
+let selectedKey = null;   // plant chosen in the side menu
+let erasing = false;
+let cat = 'All';
+let query = '';
+let cellPx = 34;
+const history = [];
+
+const byKey = {};
+PLANTS.forEach(p => { byKey[p.k] = p; });
+
+function footprint(p) { return Math.max(1, Math.round(p.sp / 12)); }
+function nextId() { return Date.now().toString(36) + Math.random().toString(36).slice(2, 7); }
+
+/* ---------------- element refs ---------------- */
+const $ = id => document.getElementById(id);
+const bed = $('bed'), ghost = $('ghost'), listEl = $('plantList'), detailEl = $('detail');
+const wIn = $('wIn'), hIn = $('hIn');
+
+/* ---------------- sidebar: search + list ---------------- */
+function buildChips() {
+  const box = $('chips');
+  box.innerHTML = '';
+  CATS.forEach(c => {
+    const b = document.createElement('button');
+    b.className = 'chip' + (c === cat ? ' on' : '');
+    b.textContent = c === 'All' ? 'All' : c + 's';
+    b.onclick = () => { cat = c; buildChips(); renderList(); };
+    box.appendChild(b);
+  });
+}
+
+function matchesQuery(p) {
+  if (!query) return true;
+  const hay = (p.n + ' ' + p.c + ' ' + p.alias + ' ' + p.note + ' ' + p.sun).toLowerCase();
+  return query.split(/\s+/).every(term => hay.includes(term));
+}
+function matches(p) {
+  return (cat === 'All' || p.c === cat) && matchesQuery(p);
+}
+
+function renderList() {
+  const found = PLANTS.filter(matches);
+  listEl.innerHTML = '';
+
+  if (!found.length) {
+    // the filter chip may be hiding results the search actually found
+    const elsewhere = cat !== 'All' ? PLANTS.filter(matchesQuery).length : 0;
+    const box = document.createElement('div');
+    box.className = 'empty-msg';
+    if (elsewhere) {
+      box.innerHTML = 'No ' + cat.toLowerCase() + 's match “' + escapeHtml(query) + '”, but ' +
+        elsewhere + ' other plant' + (elsewhere > 1 ? 's' : '') + ' do.<br><br>';
+      const b = document.createElement('button');
+      b.className = 'btn sm';
+      b.textContent = 'Search all plants';
+      b.onclick = () => { cat = 'All'; buildChips(); renderList(); };
+      box.appendChild(b);
+    } else {
+      box.innerHTML = 'No plants match “' + escapeHtml(query) +
+        '”.<br>Try “tomato”, “shade”, “berry” or “perennial”.';
+    }
+    listEl.appendChild(box);
+    return;
+  }
+
+  const groups = cat === 'All' ? ['Vegetable', 'Herb', 'Fruit'] : [cat];
+  groups.forEach(g => {
+    const items = found.filter(p => p.c === g).sort((a, b) => a.n.localeCompare(b.n));
+    if (!items.length) return;
+    const label = document.createElement('div');
+    label.className = 'group-label';
+    label.textContent = g + 's (' + items.length + ')';
+    listEl.appendChild(label);
+    items.forEach(p => listEl.appendChild(plantRow(p)));
+  });
+}
+
+function plantRow(p) {
+  const size = footprint(p);
+  const row = document.createElement('button');
+  row.className = 'plant-row' + (p.k === selectedKey ? ' on' : '');
+  row.innerHTML =
+    '<span class="swatch" style="background:' + p.col + '"></span>' +
+    '<span class="em">' + p.e + '</span>' +
+    '<span class="meta"><span class="nm">' + p.n + '</span>' +
+    '<span class="sub">' + p.sp + ' in apart · ' + size + '×' + size + ' ft · ' + p.sun + '</span></span>';
+  row.onclick = () => selectPlant(p.k);
+  return row;
+}
+
+function selectPlant(k) {
+  selectedKey = (selectedKey === k) ? null : k;
+  if (selectedKey) erasing = false;
+  renderList();
+  renderDetail();
+  renderToolbar();
+  if (window.innerWidth <= 860 && selectedKey) closeSidebar();
+}
+
+function renderDetail() {
+  if (!selectedKey) {
+    detailEl.innerHTML = '<p style="font-size:12.5px">Search the library above and pick a plant, then click on your garden bed to plant it.</p>';
+    return;
+  }
+  const p = byKey[selectedKey];
+  const size = footprint(p);
+  detailEl.innerHTML =
+    '<h3>' + p.e + ' ' + p.n + '</h3>' +
+    '<div class="facts">' +
+      fact('Spacing', p.sp + ' in (' + size + '×' + size + ' ft)') +
+      fact('Sun', p.sun) +
+      fact('Harvest', p.days) +
+      fact('Sow depth', p.depth) +
+    '</div>' +
+    '<p>' + p.note + '</p>' +
+    '<p><b>Plant near:</b> ' + p.comp + '</p>';
+}
+function fact(label, val) {
+  return '<div class="fact">' + label + '<b>' + val + '</b></div>';
+}
+
+$('search').addEventListener('input', e => {
+  query = e.target.value.trim().toLowerCase();
+  $('clearSearch').style.display = query ? 'block' : 'none';
+  renderList();
+});
+$('clearSearch').onclick = () => {
+  $('search').value = '';
+  query = '';
+  $('clearSearch').style.display = 'none';
+  renderList();
+  $('search').focus();
+};
+
+/* ---------------- garden size ---------------- */
+function buildPresets() {
+  const box = $('presets');
+  PRESETS.forEach(p => {
+    const b = document.createElement('button');
+    b.className = 'btn ghost sm';
+    b.textContent = p.n;
+    b.onclick = () => { wIn.value = p.w; hIn.value = p.h; applySize(); };
+    box.appendChild(b);
+  });
+}
+
+document.querySelectorAll('[data-step]').forEach(b => {
+  b.onclick = () => {
+    const [which, delta] = b.dataset.step.split(':');
+    const input = which === 'w' ? wIn : hIn;
+    input.value = clamp(parseInt(input.value || '1', 10) + parseInt(delta, 10), 1, 60);
+  };
+});
+
+function clamp(v, lo, hi) { return Math.min(hi, Math.max(lo, v)); }
+
+function applySize() {
+  const w = clamp(parseInt(wIn.value || '1', 10) || 1, 1, 60);
+  const h = clamp(parseInt(hIn.value || '1', 10) || 1, 1, 60);
+  wIn.value = w; hIn.value = h;
+
+  const orphans = state.placed.filter(pl => pl.x + pl.s > w || pl.y + pl.s > h);
+  if (orphans.length &&
+      !confirm(orphans.length + ' plant(s) fall outside the new size and will be removed. Continue?')) {
+    wIn.value = state.w; hIn.value = state.h;
+    return;
+  }
+  pushHistory();
+  state.w = w; state.h = h;
+  state.placed = state.placed.filter(pl => pl.x + pl.s <= w && pl.y + pl.s <= h);
+  fitZoom();
+  renderAll();
+  saveState();
+}
+$('applySize').onclick = applySize;
+
+function fitZoom() {
+  const avail = Math.max(240, (document.querySelector('main').clientWidth || 700) - 90);
+  cellPx = clamp(Math.floor(avail / state.w), 16, 54);
+}
+
+/* ---------------- bed rendering ---------------- */
+function renderBed() {
+  document.documentElement.style.setProperty('--cell', cellPx + 'px');
+  bed.style.width = state.w * cellPx + 'px';
+  bed.style.height = state.h * cellPx + 'px';
+
+  [...bed.querySelectorAll('.plant')].forEach(n => n.remove());
+  state.placed.forEach(pl => {
+    const p = byKey[pl.k];
+    if (!p) return;
+    const d = document.createElement('div');
+    d.className = 'plant' + (pl.s > 1 ? ' big' : '');
+    d.style.left = pl.x * cellPx + 'px';
+    d.style.top = pl.y * cellPx + 'px';
+    d.style.width = pl.s * cellPx + 'px';
+    d.style.height = pl.s * cellPx + 'px';
+    d.style.background = p.col;
+    d.title = p.n + ' — ' + p.sp + ' in spacing';
+    d.innerHTML = '<span>' + p.e + '</span>';
+    bed.appendChild(d);
+  });
+
+  renderRulers();
+}
+
+function renderRulers() {
+  const top = $('rulerTop'), left = $('rulerLeft');
+  top.innerHTML = ''; left.innerHTML = '';
+  const stepX = cellPx < 22 ? 5 : 1;
+  for (let x = 0; x < state.w; x++) {
+    const t = document.createElement('div');
+    t.className = 'tick';
+    t.textContent = ((x + 1) % stepX === 0 || stepX === 1) ? (x + 1) : '';
+    top.appendChild(t);
+  }
+  for (let y = 0; y < state.h; y++) {
+    const t = document.createElement('div');
+    t.className = 'tick';
+    t.textContent = ((y + 1) % stepX === 0 || stepX === 1) ? (y + 1) : '';
+    left.appendChild(t);
+  }
+}
+
+/* ---------------- placement ---------------- */
+function occupied() {
+  const set = new Set();
+  state.placed.forEach(pl => {
+    for (let dx = 0; dx < pl.s; dx++)
+      for (let dy = 0; dy < pl.s; dy++)
+        set.add((pl.x + dx) + ',' + (pl.y + dy));
+  });
+  return set;
+}
+
+function areaFree(x, y, s, occ) {
+  if (x < 0 || y < 0 || x + s > state.w || y + s > state.h) return false;
+  for (let dx = 0; dx < s; dx++)
+    for (let dy = 0; dy < s; dy++)
+      if (occ.has((x + dx) + ',' + (y + dy))) return false;
+  return true;
+}
+
+function cellAt(evt) {
+  const r = bed.getBoundingClientRect();
+  return {
+    x: Math.floor((evt.clientX - r.left) / cellPx),
+    y: Math.floor((evt.clientY - r.top) / cellPx)
+  };
+}
+
+function anchorFor(c, s) {
+  return { x: clamp(c.x, 0, state.w - s), y: clamp(c.y, 0, state.h - s) };
+}
+
+function plantIndexAt(x, y) {
+  return state.placed.findIndex(pl =>
+    x >= pl.x && x < pl.x + pl.s && y >= pl.y && y < pl.y + pl.s);
+}
+
+function tryPlace(evt) {
+  const p = byKey[selectedKey];
+  if (!p) return false;
+  const s = footprint(p);
+  const a = anchorFor(cellAt(evt), s);
+  if (!areaFree(a.x, a.y, s, occupied())) return false;
+  state.placed.push({ id: nextId(), k: p.k, x: a.x, y: a.y, s });
+  return true;
+}
+
+function tryErase(evt) {
+  const c = cellAt(evt);
+  const i = plantIndexAt(c.x, c.y);
+  if (i === -1) return false;
+  state.placed.splice(i, 1);
+  return true;
+}
+
+let painting = false, changedThisDrag = false;
+
+bed.addEventListener('pointerdown', e => {
+  if (e.button !== undefined && e.button !== 0) return;
+  bed.setPointerCapture(e.pointerId);
+  painting = true;
+  changedThisDrag = false;
+  pushHistory();
+  act(e);
+});
+bed.addEventListener('pointermove', e => {
+  updateGhost(e);
+  if (painting) act(e);
+});
+bed.addEventListener('pointerup', () => {
+  painting = false;
+  if (changedThisDrag) saveState(); else history.pop();
+});
+bed.addEventListener('pointercancel', () => {
+  painting = false;
+  if (changedThisDrag) saveState(); else history.pop();
+});
+bed.addEventListener('pointerleave', () => ghost.classList.add('hidden'));
+
+function act(e) {
+  let changed = false;
+  if (erasing) changed = tryErase(e);
+  else if (selectedKey) changed = tryPlace(e);
+  else {
+    // nothing chosen: clicking a planted square selects that plant in the menu
+    const c = cellAt(e);
+    const i = plantIndexAt(c.x, c.y);
+    if (i !== -1) selectPlant(state.placed[i].k);
+  }
+  if (changed) {
+    changedThisDrag = true;
+    renderBed();
+    renderSummary();
+    updateGhost(e);
+  }
+}
+
+function updateGhost(e) {
+  if (erasing || !selectedKey) { ghost.classList.add('hidden'); return; }
+  const p = byKey[selectedKey];
+  const s = footprint(p);
+  const a = anchorFor(cellAt(e), s);
+  ghost.classList.remove('hidden');
+  ghost.style.left = a.x * cellPx + 'px';
+  ghost.style.top = a.y * cellPx + 'px';
+  ghost.style.width = s * cellPx + 'px';
+  ghost.style.height = s * cellPx + 'px';
+  ghost.textContent = p.e;
+  ghost.classList.toggle('bad', !areaFree(a.x, a.y, s, occupied()));
+}
+
+/* ---------------- history ---------------- */
+function pushHistory() {
+  history.push(JSON.stringify(state.placed));
+  if (history.length > 60) history.shift();
+}
+$('undoBtn').onclick = () => {
+  if (!history.length) return;
+  state.placed = JSON.parse(history.pop());
+  renderBed();
+  renderSummary();
+  saveState();
+};
+document.addEventListener('keydown', e => {
+  const typing = /^(INPUT|TEXTAREA)$/.test(e.target.tagName);
+  if (!typing && (e.ctrlKey || e.metaKey) && e.key === 'z') { e.preventDefault(); $('undoBtn').click(); }
+  if (e.key === 'Escape') { selectedKey = null; erasing = false; renderList(); renderDetail(); renderToolbar(); ghost.classList.add('hidden'); }
+});
+
+/* ---------------- toolbar ---------------- */
+function renderToolbar() {
+  const chip = $('activeChip');
+  if (selectedKey) {
+    const p = byKey[selectedKey];
+    const s = footprint(p);
+    chip.className = 'active-plant';
+    chip.innerHTML = p.e + ' <b>' + p.n + '</b> · ' + s + '×' + s + ' ft';
+  } else {
+    chip.className = 'active-plant none';
+    chip.textContent = erasing ? 'Erase mode — click a plant to remove it' : 'No plant selected';
+  }
+  $('eraseBtn').classList.toggle('on', erasing);
+  bed.classList.toggle('erasing', erasing);
+}
+
+$('eraseBtn').onclick = () => {
+  erasing = !erasing;
+  if (erasing) { selectedKey = null; renderList(); renderDetail(); }
+  ghost.classList.add('hidden');
+  renderToolbar();
+};
+$('clearBtn').onclick = () => {
+  if (!state.placed.length) return;
+  if (!confirm('Remove all ' + state.placed.length + ' plants from the bed?')) return;
+  pushHistory();
+  state.placed = [];
+  renderBed(); renderSummary(); saveState();
+};
+$('zoomIn').onclick = () => { cellPx = clamp(cellPx + 6, 16, 72); renderBed(); };
+$('zoomOut').onclick = () => { cellPx = clamp(cellPx - 6, 16, 72); renderBed(); };
+
+/* ---------------- summary ---------------- */
+function renderSummary() {
+  const counts = {};
+  let used = 0;
+  state.placed.forEach(pl => {
+    counts[pl.k] = (counts[pl.k] || 0) + 1;
+    used += pl.s * pl.s;
+  });
+  const total = state.w * state.h;
+  $('areaOut').textContent = total + ' sq ft';
+  $('totalPlants').textContent = state.placed.length;
+  $('usedArea').textContent = used + ' sq ft';
+  $('freeArea').textContent = Math.max(0, total - used) + ' sq ft';
+  $('varietyCt').textContent = Object.keys(counts).length;
+
+  const legend = $('legend');
+  legend.innerHTML = '';
+  const keys = Object.keys(counts).sort((a, b) => counts[b] - counts[a]);
+  if (!keys.length) {
+    legend.innerHTML = '<span class="hint">Nothing planted yet — search the side menu and click the bed to start.</span>';
+    return;
+  }
+  keys.forEach(k => {
+    const p = byKey[k];
+    const item = document.createElement('div');
+    item.className = 'legend-item';
+    item.innerHTML =
+      '<span class="dot" style="background:' + p.col + '"></span>' +
+      p.e + ' ' + p.n + ' <span class="ct">×' + counts[k] + '</span>';
+    const rm = document.createElement('button');
+    rm.textContent = '✕';
+    rm.title = 'Remove all ' + p.n;
+    rm.onclick = () => {
+      pushHistory();
+      state.placed = state.placed.filter(pl => pl.k !== k);
+      renderBed(); renderSummary(); saveState();
+    };
+    item.appendChild(rm);
+    legend.appendChild(item);
+  });
+}
+
+/* ---------------- misc ---------------- */
+let saveTimer;
+function flashSaved() {
+  const note = $('saveNote');
+  note.textContent = '✓ Saved';
+  clearTimeout(saveTimer);
+  saveTimer = setTimeout(() => { note.textContent = ''; }, 1600);
+}
+
+$('gardenName').addEventListener('input', e => {
+  state.name = e.target.value;
+  saveState();
+});
+
+$('menuBtn').onclick = () => {
+  $('sidebar').classList.add('open');
+  $('backdrop').classList.add('show');
+  $('search').focus();
+};
+function closeSidebar() {
+  $('sidebar').classList.remove('open');
+  $('backdrop').classList.remove('show');
+}
+$('backdrop').onclick = closeSidebar;
+
+function escapeHtml(s) {
+  return String(s).replace(/[&<>"']/g, ch =>
+    ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;' })[ch]);
+}
+
+let resizeTimer;
+window.addEventListener('resize', () => {
+  clearTimeout(resizeTimer);
+  resizeTimer = setTimeout(() => { fitZoom(); renderBed(); }, 150);
+});
+
+function renderAll() {
+  renderBed();
+  renderSummary();
+  renderToolbar();
+}
+
+/* ---------------- boot ---------------- */
+wIn.value = state.w;
+hIn.value = state.h;
+$('gardenName').value = state.name || '';
+buildChips();
+buildPresets();
+renderList();
+renderDetail();
+fitZoom();
+renderAll();
+</script>
+</body>
+</html>
