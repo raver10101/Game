@@ -260,6 +260,85 @@
   .preview.bad { border-color: #ff6b6b; background: rgba(255,80,80,0.28); }
   .preview.hidden { display: none; }
 
+  /* ---------- shade + plan check ---------- */
+  .shade-cell {
+    position: absolute;
+    background: rgba(24, 34, 20, 0.30);
+    border-radius: 3px;
+    pointer-events: none;
+    z-index: 0;
+  }
+  .plant { z-index: 2; }
+  .plant.warn::after {
+    content: '⚠';
+    position: absolute;
+    top: -2px; right: 1px;
+    font-size: 11px;
+    line-height: 1;
+    text-shadow: 0 0 3px rgba(0,0,0,0.8);
+  }
+  .plant.flash { animation: flash 0.45s ease-in-out 4; z-index: 7; }
+  @keyframes flash {
+    50% { transform: scale(1.14); box-shadow: 0 0 0 4px rgba(255,255,255,0.9), 0 4px 14px rgba(0,0,0,0.4); }
+  }
+
+  .preview.warn { border-color: #f0a33c; background: rgba(240, 163, 60, 0.32); }
+
+  .place-hint {
+    font-size: 13px;
+    line-height: 1.45;
+    margin: 10px 0 0;
+    padding: 0 12px;
+    max-height: 0;
+    overflow: hidden;
+    border-radius: 10px;
+    border-left: 3px solid transparent;
+    transition: max-height 0.15s ease, padding 0.15s ease;
+  }
+  .place-hint.show { max-height: 80px; padding: 9px 12px; }
+  .place-hint.bad   { background: #fbeae6; border-left-color: #c0563f; color: #8c3b28; }
+  .place-hint.good  { background: #e9f2e2; border-left-color: var(--green); color: #35592b; }
+  .place-hint.shade { background: #eeeef4; border-left-color: #6b6f8c; color: #4a4d63; }
+
+  .tally { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 12px; }
+  .pill {
+    padding: 6px 12px; border-radius: 999px; font-size: 12.5px;
+    border: 1px solid var(--line); background: #fbfaf5; color: var(--muted);
+  }
+  .pill b { font-size: 14px; color: var(--ink); }
+  .pill.bad:not(.zero)   { background: #fbeae6; border-color: #e5c0b4; color: #8c3b28; }
+  .pill.bad:not(.zero) b { color: #a8402a; }
+  .pill.shade:not(.zero) { background: #eeeef4; border-color: #c6c8d4; color: #4a4d63; }
+  .pill.good:not(.zero)  { background: #e9f2e2; border-color: #c6dcb6; color: #35592b; }
+
+  .all-clear { font-size: 13.5px; color: var(--green-dark); margin-bottom: 4px; }
+
+  .issue {
+    display: flex; gap: 10px; align-items: flex-start; width: 100%;
+    padding: 10px 12px; margin-top: 6px; border-radius: 10px;
+    text-align: left; border: 1px solid var(--line); background: #fbfaf5;
+  }
+  .issue:hover { border-color: var(--muted); }
+  .issue .ic { font-size: 15px; line-height: 1.35; }
+  .issue .txt { flex: 1; min-width: 0; }
+  .issue b { display: block; font-size: 13.5px; font-weight: 600; }
+  .issue .why { display: block; font-size: 12.5px; color: var(--muted); line-height: 1.45; margin-top: 2px; }
+  .issue .times-n { color: var(--muted); font-weight: 500; }
+  .issue.bad   { background: #fbeae6; border-color: #e5c0b4; }
+  .issue.shade { background: #eeeef4; border-color: #c6c8d4; }
+  .issue.good  { background: #f6faf2; border-color: #dfe8d4; }
+
+  .select {
+    height: 38px; padding: 0 10px; border: 1px solid var(--line);
+    border-radius: 10px; background: #fff; max-width: 260px;
+  }
+  .foes { color: #8c3b28 !important; }
+
+  @media (prefers-reduced-motion: reduce) {
+    .plant.flash { animation: none; outline: 3px solid #fff; }
+    .place-hint { transition: none; }
+  }
+
   .legend { display: flex; flex-wrap: wrap; gap: 8px; }
   .legend-item {
     display: flex; align-items: center; gap: 8px;
@@ -361,6 +440,15 @@
           </div>
         </div>
         <button class="btn" id="applySize">Apply size</button>
+        <div class="field">
+          <label for="sunDir">Sun comes from</label>
+          <select id="sunDir" class="select">
+            <option value="S">South — shade falls up the plan</option>
+            <option value="N">North — shade falls down the plan</option>
+            <option value="E">East — shade falls left</option>
+            <option value="W">West — shade falls right</option>
+          </select>
+        </div>
         <div class="stat" style="margin-left:auto">
           <b id="areaOut">120 sq ft</b>
           <span>total bed area</span>
@@ -377,6 +465,7 @@
         <div class="active-plant none" id="activeChip">No plant selected</div>
         <button class="btn ghost sm" id="eraseBtn">🧽 Erase</button>
         <button class="btn ghost sm" id="undoBtn">↩ Undo</button>
+        <button class="btn ghost sm" id="shadeBtn">🌤 Shade</button>
         <button class="btn ghost sm" id="zoomOut">−</button>
         <button class="btn ghost sm" id="zoomIn">+</button>
         <button class="btn ghost sm" id="clearBtn">Clear bed</button>
@@ -390,7 +479,13 @@
           </div>
         </div>
       </div>
+      <div class="place-hint" id="placeHint"></div>
       <p class="hint">Each square is 1 ft². Pick a plant from the side menu, then click on the bed to plant it — on a computer you can drag to plant a whole row. Plants take up the space they need, so a tomato claims 2×2 ft. <b>To move a plant</b>, press and hold it (or just drag it with a mouse) and drop it somewhere new; it turns red where it will not fit. Turn on <b>Erase</b> and tap a plant to pull it out.</p>
+    </section>
+
+    <section class="card">
+      <h2>Plan Check</h2>
+      <div id="planCheck"></div>
     </section>
 
     <section class="card">
@@ -410,84 +505,84 @@
 /* ---------------- plant library ---------------- */
 const PLANTS = [
   // vegetables
-  { k:'tomato', n:'Tomato', e:'🍅', c:'Vegetable', sp:24, sun:'Full sun', days:'70–85 days', depth:'1/4 in', col:'#e05c4b', alias:'beefsteak slicing', note:'Needs a cage or stake. Water deeply and evenly to avoid blossom end rot.', comp:'Basil, marigold, carrot' },
-  { k:'cherrytomato', n:'Cherry Tomato', e:'🍅', c:'Vegetable', sp:24, sun:'Full sun', days:'60–70 days', depth:'1/4 in', col:'#e8705f', alias:'grape sungold', note:'Faster and more forgiving than slicers. Keeps producing until frost.', comp:'Basil, borage, lettuce' },
-  { k:'pepper', n:'Bell Pepper', e:'🫑', c:'Vegetable', sp:18, sun:'Full sun', days:'70–90 days', depth:'1/4 in', col:'#5aa64a', alias:'sweet capsicum', note:'Loves heat. Leave fruit on the plant longer to ripen red or yellow.', comp:'Basil, onion, spinach' },
-  { k:'chili', n:'Hot Pepper', e:'🌶️', c:'Vegetable', sp:18, sun:'Full sun', days:'75–95 days', depth:'1/4 in', col:'#cf3b2f', alias:'chilli jalapeno cayenne spicy', note:'Heat level climbs when plants are kept slightly dry.', comp:'Basil, carrot, oregano' },
-  { k:'cucumber', n:'Cucumber', e:'🥒', c:'Vegetable', sp:18, sun:'Full sun', days:'50–70 days', depth:'1 in', col:'#4f9e5a', alias:'pickling slicing vine', note:'Grow up a trellis to save floor space and get straighter fruit.', comp:'Bean, corn, dill' },
-  { k:'zucchini', n:'Zucchini', e:'🥒', c:'Vegetable', sp:36, sun:'Full sun', days:'50–60 days', depth:'1 in', col:'#3f8a4e', alias:'courgette summer squash', note:'One or two plants feed a household. Pick at 6–8 in.', comp:'Corn, nasturtium, bean' },
-  { k:'squash', n:'Winter Squash', e:'🎃', c:'Vegetable', sp:48, sun:'Full sun', days:'80–110 days', depth:'1 in', col:'#d98a3b', alias:'butternut acorn', note:'Long vines. Give it a corner it can sprawl out of.', comp:'Corn, bean, marigold' },
-  { k:'pumpkin', n:'Pumpkin', e:'🎃', c:'Vegetable', sp:60, sun:'Full sun', days:'95–120 days', depth:'1 in', col:'#e08b2c', alias:'jack o lantern gourd', note:'The biggest space hog in the garden. Plant on the edge of the bed.', comp:'Corn, bean, oregano' },
-  { k:'eggplant', n:'Eggplant', e:'🍆', c:'Vegetable', sp:24, sun:'Full sun', days:'70–85 days', depth:'1/4 in', col:'#7d4a9e', alias:'aubergine brinjal', note:'Wants the hottest spot you have. Harvest when skin is glossy.', comp:'Bean, pepper, thyme' },
-  { k:'carrot', n:'Carrot', e:'🥕', c:'Vegetable', sp:3, sun:'Full sun', days:'60–80 days', depth:'1/4 in', col:'#e8892b', alias:'root nantes', note:'Needs loose, stone-free soil. Thin seedlings or roots stay stubby.', comp:'Onion, leek, rosemary' },
-  { k:'radish', n:'Radish', e:'🔴', c:'Vegetable', sp:3, sun:'Full sun', days:'22–30 days', depth:'1/2 in', col:'#d94f6a', alias:'fast quick root', note:'The fastest crop here. Great filler between slower plants.', comp:'Carrot, spinach, cucumber' },
-  { k:'beet', n:'Beet', e:'🟣', c:'Vegetable', sp:4, sun:'Full sun', days:'50–70 days', depth:'1/2 in', col:'#9b3b6a', alias:'beetroot root greens', note:'Two crops in one — roots and edible greens.', comp:'Onion, lettuce, cabbage' },
-  { k:'turnip', n:'Turnip', e:'⚪', c:'Vegetable', sp:4, sun:'Full sun', days:'40–55 days', depth:'1/2 in', col:'#b8a9c4', alias:'root brassica', note:'Best flavour in cool weather. Sow in spring or late summer.', comp:'Pea, thyme, mint' },
-  { k:'parsnip', n:'Parsnip', e:'🥕', c:'Vegetable', sp:4, sun:'Full sun', days:'110–130 days', depth:'1/2 in', col:'#d9cfa3', alias:'root sweet', note:'Sweetens after a frost. Occupies its square all season.', comp:'Onion, radish, pea' },
-  { k:'potato', n:'Potato', e:'🥔', c:'Vegetable', sp:12, sun:'Full sun', days:'80–100 days', depth:'4 in', col:'#c2a066', alias:'spud tuber', note:'Hill soil over the stems as they grow for a bigger crop.', comp:'Bean, corn, horseradish' },
-  { k:'sweetpotato', n:'Sweet Potato', e:'🍠', c:'Vegetable', sp:18, sun:'Full sun', days:'90–120 days', depth:'slips', col:'#d97b45', alias:'yam vine tuber', note:'Heat lover with sprawling vines. Cure roots after harvest.', comp:'Bean, thyme, oregano' },
-  { k:'onion', n:'Onion', e:'🧅', c:'Vegetable', sp:4, sun:'Full sun', days:'90–110 days', depth:'1 in', col:'#c9a86c', alias:'bulb allium', note:'Bulb size depends on day length — match the variety to your latitude.', comp:'Carrot, beet, lettuce' },
-  { k:'garlic', n:'Garlic', e:'🧄', c:'Vegetable', sp:6, sun:'Full sun', days:'240 days', depth:'2 in', col:'#e3ddc8', alias:'allium clove', note:'Plant cloves in autumn, harvest mid-summer. Long occupancy.', comp:'Tomato, carrot, rose' },
-  { k:'leek', n:'Leek', e:'🧅', c:'Vegetable', sp:6, sun:'Full sun', days:'100–120 days', depth:'1/2 in', col:'#8fbf74', alias:'allium', note:'Mound soil around the stems to blanch them white.', comp:'Carrot, celery, strawberry' },
-  { k:'lettuce', n:'Lettuce', e:'🥬', c:'Vegetable', sp:8, sun:'Sun / part shade', days:'45–60 days', depth:'1/4 in', col:'#7fb85c', alias:'salad greens romaine butterhead', note:'Cut outer leaves and it keeps growing. Bolts in summer heat.', comp:'Carrot, radish, cucumber' },
-  { k:'spinach', n:'Spinach', e:'🥬', c:'Vegetable', sp:6, sun:'Sun / part shade', days:'40–50 days', depth:'1/2 in', col:'#3f7d3a', alias:'greens leafy', note:'A cool-season crop — sow early spring and again in autumn.', comp:'Strawberry, pea, radish' },
-  { k:'kale', n:'Kale', e:'🥬', c:'Vegetable', sp:18, sun:'Full sun', days:'55–75 days', depth:'1/2 in', col:'#456e3d', alias:'greens brassica lacinato', note:'Survives hard frost and tastes sweeter after one.', comp:'Beet, onion, dill' },
-  { k:'chard', n:'Swiss Chard', e:'🥬', c:'Vegetable', sp:12, sun:'Sun / part shade', days:'50–60 days', depth:'1/2 in', col:'#c0553f', alias:'greens rainbow silverbeet', note:'Harvest outer stalks for months from a single plant.', comp:'Bean, onion, cabbage' },
-  { k:'cabbage', n:'Cabbage', e:'🥬', c:'Vegetable', sp:18, sun:'Full sun', days:'70–100 days', depth:'1/2 in', col:'#8fae74', alias:'brassica head', note:'Heavy feeder. Watch for cabbage worms under the leaves.', comp:'Dill, mint, onion' },
-  { k:'broccoli', n:'Broccoli', e:'🥦', c:'Vegetable', sp:18, sun:'Full sun', days:'60–90 days', depth:'1/2 in', col:'#4c8a4a', alias:'brassica florets', note:'Cut the main head and side shoots keep coming.', comp:'Onion, celery, chamomile' },
-  { k:'cauliflower', n:'Cauliflower', e:'🥦', c:'Vegetable', sp:20, sun:'Full sun', days:'70–90 days', depth:'1/2 in', col:'#ded9c0', alias:'brassica head white', note:'Fussy about steady moisture. Tie leaves over the head to keep it white.', comp:'Bean, celery, thyme' },
-  { k:'brussels', n:'Brussels Sprouts', e:'🥬', c:'Vegetable', sp:24, sun:'Full sun', days:'100–130 days', depth:'1/2 in', col:'#6d9455', alias:'brassica sprouts', note:'Long season, tall plant. Harvest from the bottom up after frost.', comp:'Onion, dill, mint' },
-  { k:'bokchoy', n:'Bok Choy', e:'🥬', c:'Vegetable', sp:8, sun:'Sun / part shade', days:'45–55 days', depth:'1/4 in', col:'#9dc470', alias:'pak choi asian greens brassica', note:'Quick cool-season crop. Bolts if planted too late in spring.', comp:'Beet, carrot, onion' },
-  { k:'arugula', n:'Arugula', e:'🌿', c:'Vegetable', sp:6, sun:'Sun / part shade', days:'30–40 days', depth:'1/4 in', col:'#6fa84f', alias:'rocket salad greens peppery', note:'Peppery salad green, ready in a month. Sow every 2 weeks.', comp:'Lettuce, carrot, bush bean' },
-  { k:'celery', n:'Celery', e:'🥬', c:'Vegetable', sp:8, sun:'Sun / part shade', days:'100–120 days', depth:'1/8 in', col:'#a3c96a', alias:'stalk', note:'Thirsty and slow. Never let the soil dry out.', comp:'Cabbage, bean, tomato' },
-  { k:'pea', n:'Peas', e:'🫛', c:'Vegetable', sp:3, sun:'Full sun', days:'55–70 days', depth:'1 in', col:'#7dbf58', alias:'snap snow shelling legume', note:'Sow as soon as soil can be worked. Give it something to climb.', comp:'Carrot, radish, cucumber' },
-  { k:'bean', n:'Green Beans', e:'🫘', c:'Vegetable', sp:4, sun:'Full sun', days:'50–65 days', depth:'1 in', col:'#5c9e46', alias:'bush pole snap legume', note:'Fixes nitrogen in the soil. Pick often to keep pods coming.', comp:'Corn, squash, carrot' },
-  { k:'corn', n:'Sweet Corn', e:'🌽', c:'Vegetable', sp:12, sun:'Full sun', days:'70–90 days', depth:'1.5 in', col:'#e0c04a', alias:'maize', note:'Plant in a block, not a row, so it pollinates properly.', comp:'Bean, squash, cucumber' },
-  { k:'asparagus', n:'Asparagus', e:'🌱', c:'Vegetable', sp:18, sun:'Full sun', days:'2–3 years', depth:'6 in', col:'#78a85f', alias:'perennial crown spears', note:'Perennial — pick a permanent spot. No harvest for the first two years.', comp:'Tomato, parsley, basil' },
-  { k:'okra', n:'Okra', e:'🌿', c:'Vegetable', sp:18, sun:'Full sun', days:'55–65 days', depth:'1/2 in', col:'#6b9e3f', alias:'gumbo pods heat', note:'Thrives in serious heat. Harvest pods young at 3 in.', comp:'Pepper, basil, melon' },
-  { k:'artichoke', n:'Artichoke', e:'🌵', c:'Vegetable', sp:48, sun:'Full sun', days:'85–100 days', depth:'1/4 in', col:'#7f9e8c', alias:'globe perennial thistle', note:'A big architectural plant. Perennial in mild winters.', comp:'Pea, cabbage, sunflower' },
-  { k:'pumpkinleaf', n:'Watermelon Radish', e:'🔴', c:'Vegetable', sp:4, sun:'Full sun', days:'55–65 days', depth:'1/2 in', col:'#d9738f', alias:'radish winter root', note:'A larger, slower radish for autumn sowing.', comp:'Spinach, pea, lettuce' },
+  { k:'tomato', n:'Tomato', e:'🍅', c:'Vegetable', ht:5, sp:24, sun:'Full sun', days:'70–85 days', depth:'1/4 in', col:'#e05c4b', alias:'beefsteak slicing', note:'Needs a cage or stake. Water deeply and evenly to avoid blossom end rot.', comp:'Basil, marigold, carrot' },
+  { k:'cherrytomato', n:'Cherry Tomato', e:'🍅', c:'Vegetable', ht:5, sp:24, sun:'Full sun', days:'60–70 days', depth:'1/4 in', col:'#e8705f', alias:'grape sungold', note:'Faster and more forgiving than slicers. Keeps producing until frost.', comp:'Basil, borage, lettuce' },
+  { k:'pepper', n:'Bell Pepper', e:'🫑', c:'Vegetable', ht:2.5, sp:18, sun:'Full sun', days:'70–90 days', depth:'1/4 in', col:'#5aa64a', alias:'sweet capsicum', note:'Loves heat. Leave fruit on the plant longer to ripen red or yellow.', comp:'Basil, onion, spinach' },
+  { k:'chili', n:'Hot Pepper', e:'🌶️', c:'Vegetable', ht:2.5, sp:18, sun:'Full sun', days:'75–95 days', depth:'1/4 in', col:'#cf3b2f', alias:'chilli jalapeno cayenne spicy', note:'Heat level climbs when plants are kept slightly dry.', comp:'Basil, carrot, oregano' },
+  { k:'cucumber', n:'Cucumber', e:'🥒', c:'Vegetable', ht:1.5, sp:18, sun:'Full sun', days:'50–70 days', depth:'1 in', col:'#4f9e5a', alias:'pickling slicing vine', note:'Grow up a trellis to save floor space and get straighter fruit.', comp:'Bean, corn, dill' },
+  { k:'zucchini', n:'Zucchini', e:'🥒', c:'Vegetable', ht:2.5, sp:36, sun:'Full sun', days:'50–60 days', depth:'1 in', col:'#3f8a4e', alias:'courgette summer squash', note:'One or two plants feed a household. Pick at 6–8 in.', comp:'Corn, nasturtium, bean' },
+  { k:'squash', n:'Winter Squash', e:'🎃', c:'Vegetable', ht:2, sp:48, sun:'Full sun', days:'80–110 days', depth:'1 in', col:'#d98a3b', alias:'butternut acorn', note:'Long vines. Give it a corner it can sprawl out of.', comp:'Corn, bean, marigold' },
+  { k:'pumpkin', n:'Pumpkin', e:'🎃', c:'Vegetable', ht:1.5, sp:60, sun:'Full sun', days:'95–120 days', depth:'1 in', col:'#e08b2c', alias:'jack o lantern gourd', note:'The biggest space hog in the garden. Plant on the edge of the bed.', comp:'Corn, bean, oregano' },
+  { k:'eggplant', n:'Eggplant', e:'🍆', c:'Vegetable', ht:3, sp:24, sun:'Full sun', days:'70–85 days', depth:'1/4 in', col:'#7d4a9e', alias:'aubergine brinjal', note:'Wants the hottest spot you have. Harvest when skin is glossy.', comp:'Bean, pepper, thyme' },
+  { k:'carrot', n:'Carrot', e:'🥕', c:'Vegetable', ht:1, sp:3, sun:'Full sun', days:'60–80 days', depth:'1/4 in', col:'#e8892b', alias:'root nantes', note:'Needs loose, stone-free soil. Thin seedlings or roots stay stubby.', comp:'Onion, leek, rosemary' },
+  { k:'radish', n:'Radish', e:'🔴', c:'Vegetable', ht:0.75, sp:3, sun:'Full sun', days:'22–30 days', depth:'1/2 in', col:'#d94f6a', alias:'fast quick root', note:'The fastest crop here. Great filler between slower plants.', comp:'Carrot, spinach, cucumber' },
+  { k:'beet', n:'Beet', e:'🟣', c:'Vegetable', ht:1, sp:4, sun:'Full sun', days:'50–70 days', depth:'1/2 in', col:'#9b3b6a', alias:'beetroot root greens', note:'Two crops in one — roots and edible greens.', comp:'Onion, lettuce, cabbage' },
+  { k:'turnip', n:'Turnip', e:'⚪', c:'Vegetable', ht:1, sp:4, sun:'Full sun', days:'40–55 days', depth:'1/2 in', col:'#b8a9c4', alias:'root brassica', note:'Best flavour in cool weather. Sow in spring or late summer.', comp:'Pea, thyme, mint' },
+  { k:'parsnip', n:'Parsnip', e:'🥕', c:'Vegetable', ht:1.5, sp:4, sun:'Full sun', days:'110–130 days', depth:'1/2 in', col:'#d9cfa3', alias:'root sweet', note:'Sweetens after a frost. Occupies its square all season.', comp:'Onion, radish, pea' },
+  { k:'potato', n:'Potato', e:'🥔', c:'Vegetable', ht:2, sp:12, sun:'Full sun', days:'80–100 days', depth:'4 in', col:'#c2a066', alias:'spud tuber', note:'Hill soil over the stems as they grow for a bigger crop.', comp:'Bean, corn, horseradish' },
+  { k:'sweetpotato', n:'Sweet Potato', e:'🍠', c:'Vegetable', ht:1, sp:18, sun:'Full sun', days:'90–120 days', depth:'slips', col:'#d97b45', alias:'yam vine tuber', note:'Heat lover with sprawling vines. Cure roots after harvest.', comp:'Bean, thyme, oregano' },
+  { k:'onion', n:'Onion', e:'🧅', c:'Vegetable', ht:1.5, sp:4, sun:'Full sun', days:'90–110 days', depth:'1 in', col:'#c9a86c', alias:'bulb allium', note:'Bulb size depends on day length — match the variety to your latitude.', comp:'Carrot, beet, lettuce' },
+  { k:'garlic', n:'Garlic', e:'🧄', c:'Vegetable', ht:2, sp:6, sun:'Full sun', days:'240 days', depth:'2 in', col:'#e3ddc8', alias:'allium clove', note:'Plant cloves in autumn, harvest mid-summer. Long occupancy.', comp:'Tomato, carrot, rose' },
+  { k:'leek', n:'Leek', e:'🧅', c:'Vegetable', ht:2.5, sp:6, sun:'Full sun', days:'100–120 days', depth:'1/2 in', col:'#8fbf74', alias:'allium', note:'Mound soil around the stems to blanch them white.', comp:'Carrot, celery, strawberry' },
+  { k:'lettuce', n:'Lettuce', e:'🥬', c:'Vegetable', ht:0.75, sp:8, sun:'Sun / part shade', days:'45–60 days', depth:'1/4 in', col:'#7fb85c', alias:'salad greens romaine butterhead', note:'Cut outer leaves and it keeps growing. Bolts in summer heat.', comp:'Carrot, radish, cucumber' },
+  { k:'spinach', n:'Spinach', e:'🥬', c:'Vegetable', ht:0.75, sp:6, sun:'Sun / part shade', days:'40–50 days', depth:'1/2 in', col:'#3f7d3a', alias:'greens leafy', note:'A cool-season crop — sow early spring and again in autumn.', comp:'Strawberry, pea, radish' },
+  { k:'kale', n:'Kale', e:'🥬', c:'Vegetable', ht:2.5, sp:18, sun:'Full sun', days:'55–75 days', depth:'1/2 in', col:'#456e3d', alias:'greens brassica lacinato', note:'Survives hard frost and tastes sweeter after one.', comp:'Beet, onion, dill' },
+  { k:'chard', n:'Swiss Chard', e:'🥬', c:'Vegetable', ht:2, sp:12, sun:'Sun / part shade', days:'50–60 days', depth:'1/2 in', col:'#c0553f', alias:'greens rainbow silverbeet', note:'Harvest outer stalks for months from a single plant.', comp:'Bean, onion, cabbage' },
+  { k:'cabbage', n:'Cabbage', e:'🥬', c:'Vegetable', ht:1.5, sp:18, sun:'Full sun', days:'70–100 days', depth:'1/2 in', col:'#8fae74', alias:'brassica head', note:'Heavy feeder. Watch for cabbage worms under the leaves.', comp:'Dill, mint, onion' },
+  { k:'broccoli', n:'Broccoli', e:'🥦', c:'Vegetable', ht:2.5, sp:18, sun:'Full sun', days:'60–90 days', depth:'1/2 in', col:'#4c8a4a', alias:'brassica florets', note:'Cut the main head and side shoots keep coming.', comp:'Onion, celery, chamomile' },
+  { k:'cauliflower', n:'Cauliflower', e:'🥦', c:'Vegetable', ht:2, sp:20, sun:'Full sun', days:'70–90 days', depth:'1/2 in', col:'#ded9c0', alias:'brassica head white', note:'Fussy about steady moisture. Tie leaves over the head to keep it white.', comp:'Bean, celery, thyme' },
+  { k:'brussels', n:'Brussels Sprouts', e:'🥬', c:'Vegetable', ht:3, sp:24, sun:'Full sun', days:'100–130 days', depth:'1/2 in', col:'#6d9455', alias:'brassica sprouts', note:'Long season, tall plant. Harvest from the bottom up after frost.', comp:'Onion, dill, mint' },
+  { k:'bokchoy', n:'Bok Choy', e:'🥬', c:'Vegetable', ht:1, sp:8, sun:'Sun / part shade', days:'45–55 days', depth:'1/4 in', col:'#9dc470', alias:'pak choi asian greens brassica', note:'Quick cool-season crop. Bolts if planted too late in spring.', comp:'Beet, carrot, onion' },
+  { k:'arugula', n:'Arugula', e:'🌿', c:'Vegetable', ht:0.75, sp:6, sun:'Sun / part shade', days:'30–40 days', depth:'1/4 in', col:'#6fa84f', alias:'rocket salad greens peppery', note:'Peppery salad green, ready in a month. Sow every 2 weeks.', comp:'Lettuce, carrot, bush bean' },
+  { k:'celery', n:'Celery', e:'🥬', c:'Vegetable', ht:2, sp:8, sun:'Sun / part shade', days:'100–120 days', depth:'1/8 in', col:'#a3c96a', alias:'stalk', note:'Thirsty and slow. Never let the soil dry out.', comp:'Cabbage, bean, tomato' },
+  { k:'pea', n:'Peas', e:'🫛', c:'Vegetable', ht:4, sp:3, sun:'Full sun', days:'55–70 days', depth:'1 in', col:'#7dbf58', alias:'snap snow shelling legume', note:'Sow as soon as soil can be worked. Give it something to climb.', comp:'Carrot, radish, cucumber' },
+  { k:'bean', n:'Green Beans', e:'🫘', c:'Vegetable', ht:3, sp:4, sun:'Full sun', days:'50–65 days', depth:'1 in', col:'#5c9e46', alias:'bush pole snap legume', note:'Fixes nitrogen in the soil. Pick often to keep pods coming.', comp:'Corn, squash, carrot' },
+  { k:'corn', n:'Sweet Corn', e:'🌽', c:'Vegetable', ht:7, sp:12, sun:'Full sun', days:'70–90 days', depth:'1.5 in', col:'#e0c04a', alias:'maize', note:'Plant in a block, not a row, so it pollinates properly.', comp:'Bean, squash, cucumber' },
+  { k:'asparagus', n:'Asparagus', e:'🌱', c:'Vegetable', ht:5, sp:18, sun:'Full sun', days:'2–3 years', depth:'6 in', col:'#78a85f', alias:'perennial crown spears', note:'Perennial — pick a permanent spot. No harvest for the first two years.', comp:'Tomato, parsley, basil' },
+  { k:'okra', n:'Okra', e:'🌿', c:'Vegetable', ht:5, sp:18, sun:'Full sun', days:'55–65 days', depth:'1/2 in', col:'#6b9e3f', alias:'gumbo pods heat', note:'Thrives in serious heat. Harvest pods young at 3 in.', comp:'Pepper, basil, melon' },
+  { k:'artichoke', n:'Artichoke', e:'🌵', c:'Vegetable', ht:4, sp:48, sun:'Full sun', days:'85–100 days', depth:'1/4 in', col:'#7f9e8c', alias:'globe perennial thistle', note:'A big architectural plant. Perennial in mild winters.', comp:'Pea, cabbage, sunflower' },
+  { k:'pumpkinleaf', n:'Watermelon Radish', e:'🔴', c:'Vegetable', ht:1, sp:4, sun:'Full sun', days:'55–65 days', depth:'1/2 in', col:'#d9738f', alias:'radish winter root', note:'A larger, slower radish for autumn sowing.', comp:'Spinach, pea, lettuce' },
 
   // herbs
-  { k:'basil', n:'Basil', e:'🌿', c:'Herb', sp:12, sun:'Full sun', days:'60–75 days', depth:'1/4 in', col:'#4f9e3f', alias:'genovese thai sweet', note:'Pinch flower buds to keep leaves coming. Hates cold nights.', comp:'Tomato, pepper, oregano' },
-  { k:'parsley', n:'Parsley', e:'🌿', c:'Herb', sp:9, sun:'Sun / part shade', days:'70–90 days', depth:'1/4 in', col:'#3f8a4a', alias:'flat leaf curly biennial', note:'Slow to germinate — soak seed overnight first.', comp:'Tomato, asparagus, corn' },
-  { k:'cilantro', n:'Cilantro', e:'🌿', c:'Herb', sp:6, sun:'Sun / part shade', days:'45–70 days', depth:'1/4 in', col:'#6bb04f', alias:'coriander dhania', note:'Bolts fast in heat. Sow a small batch every few weeks.', comp:'Spinach, tomato, anise' },
-  { k:'dill', n:'Dill', e:'🌿', c:'Herb', sp:12, sun:'Full sun', days:'40–60 days', depth:'1/4 in', col:'#8fbf5a', alias:'feathery pickling', note:'Attracts beneficial wasps. Reseeds itself happily.', comp:'Cabbage, onion, cucumber' },
-  { k:'mint', n:'Mint', e:'🌿', c:'Herb', sp:18, sun:'Sun / part shade', days:'60 days', depth:'1/4 in', col:'#4fbf8a', alias:'peppermint spearmint invasive', note:'Runs everywhere. Sink a pot in the bed to contain the roots.', comp:'Cabbage, tomato, brassicas' },
-  { k:'rosemary', n:'Rosemary', e:'🌲', c:'Herb', sp:24, sun:'Full sun', days:'perennial', depth:'cutting', col:'#5f8a6f', alias:'woody evergreen shrub', note:'Wants sharp drainage and dislikes wet feet in winter.', comp:'Cabbage, bean, carrot' },
-  { k:'thyme', n:'Thyme', e:'🌿', c:'Herb', sp:9, sun:'Full sun', days:'perennial', depth:'surface', col:'#7f9e5f', alias:'creeping woody ground', note:'Low, spreading, drought-tolerant. Great edge planting.', comp:'Cabbage, strawberry, tomato' },
-  { k:'oregano', n:'Oregano', e:'🌿', c:'Herb', sp:12, sun:'Full sun', days:'perennial', depth:'surface', col:'#6f9e4f', alias:'greek marjoram perennial', note:'Flavour gets stronger in poor, dry soil.', comp:'Pepper, tomato, bean' },
-  { k:'sage', n:'Sage', e:'🌿', c:'Herb', sp:18, sun:'Full sun', days:'perennial', depth:'1/4 in', col:'#8fa88f', alias:'woody grey shrub', note:'Woody perennial. Cut back hard in spring to keep it tidy.', comp:'Cabbage, carrot, rosemary' },
-  { k:'chives', n:'Chives', e:'🧅', c:'Herb', sp:6, sun:'Full sun', days:'60–80 days', depth:'1/4 in', col:'#6fbf7f', alias:'allium onion perennial', note:'Perennial clump with edible purple flowers.', comp:'Carrot, tomato, apple' },
-  { k:'lavender', n:'Lavender', e:'💜', c:'Herb', sp:24, sun:'Full sun', days:'perennial', depth:'surface', col:'#9b8fc4', alias:'pollinator fragrant shrub', note:'Pollinator magnet. Needs dry feet and full sun.', comp:'Rosemary, sage, thyme' },
-  { k:'tarragon', n:'Tarragon', e:'🌿', c:'Herb', sp:18, sun:'Full sun', days:'perennial', depth:'cutting', col:'#7fa86f', alias:'french anise perennial', note:'Buy French tarragon as a plant — Russian seed is flavourless.', comp:'Eggplant, pepper, tomato' },
-  { k:'lemonbalm', n:'Lemon Balm', e:'🍋', c:'Herb', sp:18, sun:'Sun / part shade', days:'perennial', depth:'surface', col:'#a8c46f', alias:'melissa citrus mint', note:'Spreads like its mint cousin. Lovely in tea.', comp:'Squash, tomato, brassicas' },
-  { k:'fennel', n:'Fennel', e:'🌿', c:'Herb', sp:12, sun:'Full sun', days:'80–100 days', depth:'1/4 in', col:'#b8c46f', alias:'bulb anise florence', note:'Keep it away from most vegetables — it inhibits their growth.', comp:'Plant on its own' },
-  { k:'marjoram', n:'Marjoram', e:'🌿', c:'Herb', sp:9, sun:'Full sun', days:'60–70 days', depth:'surface', col:'#8fb85f', alias:'sweet oregano', note:'Sweeter and milder than oregano. Tender in cold winters.', comp:'Pepper, bean, squash' },
-  { k:'bay', n:'Bay Laurel', e:'🌳', c:'Herb', sp:36, sun:'Full sun', days:'perennial', depth:'cutting', col:'#4f7a4f', alias:'laurel tree evergreen', note:'Slow-growing shrub. Container-grow it where winters freeze.', comp:'Bean, brassicas' },
+  { k:'basil', n:'Basil', e:'🌿', c:'Herb', ht:2, sp:12, sun:'Full sun', days:'60–75 days', depth:'1/4 in', col:'#4f9e3f', alias:'genovese thai sweet', note:'Pinch flower buds to keep leaves coming. Hates cold nights.', comp:'Tomato, pepper, oregano' },
+  { k:'parsley', n:'Parsley', e:'🌿', c:'Herb', ht:1, sp:9, sun:'Sun / part shade', days:'70–90 days', depth:'1/4 in', col:'#3f8a4a', alias:'flat leaf curly biennial', note:'Slow to germinate — soak seed overnight first.', comp:'Tomato, asparagus, corn' },
+  { k:'cilantro', n:'Cilantro', e:'🌿', c:'Herb', ht:1.5, sp:6, sun:'Sun / part shade', days:'45–70 days', depth:'1/4 in', col:'#6bb04f', alias:'coriander dhania', note:'Bolts fast in heat. Sow a small batch every few weeks.', comp:'Spinach, tomato, anise' },
+  { k:'dill', n:'Dill', e:'🌿', c:'Herb', ht:3.5, sp:12, sun:'Full sun', days:'40–60 days', depth:'1/4 in', col:'#8fbf5a', alias:'feathery pickling', note:'Attracts beneficial wasps. Reseeds itself happily.', comp:'Cabbage, onion, cucumber' },
+  { k:'mint', n:'Mint', e:'🌿', c:'Herb', ht:2, sp:18, sun:'Sun / part shade', days:'60 days', depth:'1/4 in', col:'#4fbf8a', alias:'peppermint spearmint invasive', note:'Runs everywhere. Sink a pot in the bed to contain the roots.', comp:'Cabbage, tomato, brassicas' },
+  { k:'rosemary', n:'Rosemary', e:'🌲', c:'Herb', ht:3, sp:24, sun:'Full sun', days:'perennial', depth:'cutting', col:'#5f8a6f', alias:'woody evergreen shrub', note:'Wants sharp drainage and dislikes wet feet in winter.', comp:'Cabbage, bean, carrot' },
+  { k:'thyme', n:'Thyme', e:'🌿', c:'Herb', ht:0.75, sp:9, sun:'Full sun', days:'perennial', depth:'surface', col:'#7f9e5f', alias:'creeping woody ground', note:'Low, spreading, drought-tolerant. Great edge planting.', comp:'Cabbage, strawberry, tomato' },
+  { k:'oregano', n:'Oregano', e:'🌿', c:'Herb', ht:1.5, sp:12, sun:'Full sun', days:'perennial', depth:'surface', col:'#6f9e4f', alias:'greek marjoram perennial', note:'Flavour gets stronger in poor, dry soil.', comp:'Pepper, tomato, bean' },
+  { k:'sage', n:'Sage', e:'🌿', c:'Herb', ht:2, sp:18, sun:'Full sun', days:'perennial', depth:'1/4 in', col:'#8fa88f', alias:'woody grey shrub', note:'Woody perennial. Cut back hard in spring to keep it tidy.', comp:'Cabbage, carrot, rosemary' },
+  { k:'chives', n:'Chives', e:'🧅', c:'Herb', ht:1, sp:6, sun:'Full sun', days:'60–80 days', depth:'1/4 in', col:'#6fbf7f', alias:'allium onion perennial', note:'Perennial clump with edible purple flowers.', comp:'Carrot, tomato, apple' },
+  { k:'lavender', n:'Lavender', e:'💜', c:'Herb', ht:2.5, sp:24, sun:'Full sun', days:'perennial', depth:'surface', col:'#9b8fc4', alias:'pollinator fragrant shrub', note:'Pollinator magnet. Needs dry feet and full sun.', comp:'Rosemary, sage, thyme' },
+  { k:'tarragon', n:'Tarragon', e:'🌿', c:'Herb', ht:2.5, sp:18, sun:'Full sun', days:'perennial', depth:'cutting', col:'#7fa86f', alias:'french anise perennial', note:'Buy French tarragon as a plant — Russian seed is flavourless.', comp:'Eggplant, pepper, tomato' },
+  { k:'lemonbalm', n:'Lemon Balm', e:'🍋', c:'Herb', ht:2, sp:18, sun:'Sun / part shade', days:'perennial', depth:'surface', col:'#a8c46f', alias:'melissa citrus mint', note:'Spreads like its mint cousin. Lovely in tea.', comp:'Squash, tomato, brassicas' },
+  { k:'fennel', n:'Fennel', e:'🌿', c:'Herb', ht:5, sp:12, sun:'Full sun', days:'80–100 days', depth:'1/4 in', col:'#b8c46f', alias:'bulb anise florence', note:'Keep it away from most vegetables — it inhibits their growth.', comp:'Plant on its own' },
+  { k:'marjoram', n:'Marjoram', e:'🌿', c:'Herb', ht:1, sp:9, sun:'Full sun', days:'60–70 days', depth:'surface', col:'#8fb85f', alias:'sweet oregano', note:'Sweeter and milder than oregano. Tender in cold winters.', comp:'Pepper, bean, squash' },
+  { k:'bay', n:'Bay Laurel', e:'🌳', c:'Herb', ht:8, sp:36, sun:'Full sun', days:'perennial', depth:'cutting', col:'#4f7a4f', alias:'laurel tree evergreen', note:'Slow-growing shrub. Container-grow it where winters freeze.', comp:'Bean, brassicas' },
 
   // fruits
-  { k:'strawberry', n:'Strawberry', e:'🍓', c:'Fruit', sp:12, sun:'Full sun', days:'perennial', depth:'crown level', col:'#e04f6a', alias:'berry runner june everbearing', note:'Sends out runners — pin them down for free plants.', comp:'Spinach, lettuce, borage' },
-  { k:'blueberry', n:'Blueberry', e:'🫐', c:'Fruit', sp:48, sun:'Full sun', days:'perennial', depth:'shrub', col:'#4a6fb8', alias:'berry bush acid', note:'Needs acidic soil (pH 4.5–5.5). Plant two varieties for better fruit.', comp:'Thyme, strawberry, rhododendron' },
-  { k:'raspberry', n:'Raspberry', e:'🍇', c:'Fruit', sp:24, sun:'Full sun', days:'perennial', depth:'cane', col:'#c04a6f', alias:'cane berry bramble', note:'Canes fruit in their second year. Trellis them in a row.', comp:'Garlic, chives, marigold' },
-  { k:'blackberry', n:'Blackberry', e:'🫐', c:'Fruit', sp:36, sun:'Full sun', days:'perennial', depth:'cane', col:'#4a3f5f', alias:'cane berry bramble thornless', note:'Vigorous. Give it a fence line and prune hard each year.', comp:'Garlic, tansy, mint' },
-  { k:'currant', n:'Currant', e:'🫐', c:'Fruit', sp:36, sun:'Sun / part shade', days:'perennial', depth:'shrub', col:'#8a2f4a', alias:'berry black red bush ribes', note:'Tolerates more shade than most fruit. Very hardy.', comp:'Chives, garlic, nasturtium' },
-  { k:'gooseberry', n:'Gooseberry', e:'🫐', c:'Fruit', sp:36, sun:'Sun / part shade', days:'perennial', depth:'shrub', col:'#8fa84f', alias:'berry bush ribes tart', note:'Thorny but productive. Prune to an open goblet shape.', comp:'Chives, tomato, comfrey' },
-  { k:'grape', n:'Grape Vine', e:'🍇', c:'Fruit', sp:72, sun:'Full sun', days:'perennial', depth:'vine', col:'#7a4a9e', alias:'vine table wine arbor', note:'Wants a sturdy arbor or wire and a hard annual prune.', comp:'Hyssop, basil, clover' },
-  { k:'watermelon', n:'Watermelon', e:'🍉', c:'Fruit', sp:60, sun:'Full sun', days:'80–100 days', depth:'1 in', col:'#3f9e5a', alias:'melon vine sprawling', note:'Huge sprawling vines and a long hot season needed.', comp:'Corn, radish, nasturtium' },
-  { k:'cantaloupe', n:'Cantaloupe', e:'🍈', c:'Fruit', sp:36, sun:'Full sun', days:'75–90 days', depth:'1 in', col:'#e0a45f', alias:'melon muskmelon vine', note:'Ripe when the stem slips off the fruit with light pressure.', comp:'Corn, bean, oregano' },
-  { k:'honeydew', n:'Honeydew', e:'🍈', c:'Fruit', sp:36, sun:'Full sun', days:'80–95 days', depth:'1 in', col:'#b8d98f', alias:'melon vine sweet', note:'Like cantaloupe but slower. Mulch to keep fruit off soil.', comp:'Corn, radish, marigold' },
-  { k:'rhubarb', n:'Rhubarb', e:'🌱', c:'Fruit', sp:36, sun:'Sun / part shade', days:'perennial', depth:'crown', col:'#c04a5f', alias:'stalk perennial pie', note:'Perennial for 10+ years. Never eat the leaves — only stalks.', comp:'Garlic, onion, brassicas' },
-  { k:'apple', n:'Apple Tree (dwarf)', e:'🍎', c:'Fruit', sp:96, sun:'Full sun', days:'perennial', depth:'tree', col:'#c0392b', alias:'tree orchard pome dwarf', note:'Dwarf rootstock stays around 8 ft. Plant two for pollination.', comp:'Chives, nasturtium, comfrey' },
-  { k:'pear', n:'Pear Tree (dwarf)', e:'🍐', c:'Fruit', sp:96, sun:'Full sun', days:'perennial', depth:'tree', col:'#9eb84a', alias:'tree orchard pome dwarf', note:'Needs a second variety nearby to set fruit well.', comp:'Chive, clover, borage' },
-  { k:'peach', n:'Peach Tree (dwarf)', e:'🍑', c:'Fruit', sp:96, sun:'Full sun', days:'perennial', depth:'tree', col:'#e08a6f', alias:'tree stone orchard dwarf', note:'Self-fertile. Thin the young fruit for bigger peaches.', comp:'Garlic, tansy, basil' },
-  { k:'cherry', n:'Cherry Tree (dwarf)', e:'🍒', c:'Fruit', sp:96, sun:'Full sun', days:'perennial', depth:'tree', col:'#a02f3f', alias:'tree stone orchard dwarf sour sweet', note:'Net it before the birds find it — they always do.', comp:'Chives, marigold, clover' },
-  { k:'lemon', n:'Lemon Tree', e:'🍋', c:'Fruit', sp:72, sun:'Full sun', days:'perennial', depth:'tree', col:'#e0c44a', alias:'citrus tree meyer container', note:'Grow in a pot and bring it indoors where winters freeze.', comp:'Basil, marigold, comfrey' },
-  { k:'orange', n:'Orange Tree', e:'🍊', c:'Fruit', sp:96, sun:'Full sun', days:'perennial', depth:'tree', col:'#e0862b', alias:'citrus tree', note:'Frost-tender citrus for zone 9+ or a large container.', comp:'Marigold, clover, lavender' },
-  { k:'fig', n:'Fig Tree', e:'🍈', c:'Fruit', sp:96, sun:'Full sun', days:'perennial', depth:'tree', col:'#7a5a8a', alias:'tree mediterranean', note:'Fruits best when the roots are a bit restricted.', comp:'Rue, strawberry, thyme' },
-  { k:'kiwi', n:'Hardy Kiwi', e:'🥝', c:'Fruit', sp:96, sun:'Full sun', days:'perennial', depth:'vine', col:'#7fa83f', alias:'vine arbor hardy', note:'Vigorous vine needing a strong structure and a male plant.', comp:'Comfrey, clover' },
-  { k:'pineapple', n:'Pineapple', e:'🍍', c:'Fruit', sp:24, sun:'Full sun', days:'18–24 months', depth:'crown', col:'#d9a83f', alias:'tropical bromeliad container', note:'Start from a supermarket crown. Very slow but fun.', comp:'Grow on its own' },
-  { k:'banana', n:'Banana', e:'🍌', c:'Fruit', sp:96, sun:'Full sun', days:'perennial', depth:'pup', col:'#e0c25f', alias:'tropical clump', note:'Tropical clumping plant. Needs shelter from wind.', comp:'Sweet potato, ginger' }
+  { k:'strawberry', n:'Strawberry', e:'🍓', c:'Fruit', ht:0.75, sp:12, sun:'Full sun', days:'perennial', depth:'crown level', col:'#e04f6a', alias:'berry runner june everbearing', note:'Sends out runners — pin them down for free plants.', comp:'Spinach, lettuce, borage' },
+  { k:'blueberry', n:'Blueberry', e:'🫐', c:'Fruit', ht:5, sp:48, sun:'Full sun', days:'perennial', depth:'shrub', col:'#4a6fb8', alias:'berry bush acid', note:'Needs acidic soil (pH 4.5–5.5). Plant two varieties for better fruit.', comp:'Thyme, strawberry, rhododendron' },
+  { k:'raspberry', n:'Raspberry', e:'🍇', c:'Fruit', ht:6, sp:24, sun:'Full sun', days:'perennial', depth:'cane', col:'#c04a6f', alias:'cane berry bramble', note:'Canes fruit in their second year. Trellis them in a row.', comp:'Garlic, chives, marigold' },
+  { k:'blackberry', n:'Blackberry', e:'🫐', c:'Fruit', ht:6, sp:36, sun:'Full sun', days:'perennial', depth:'cane', col:'#4a3f5f', alias:'cane berry bramble thornless', note:'Vigorous. Give it a fence line and prune hard each year.', comp:'Garlic, tansy, mint' },
+  { k:'currant', n:'Currant', e:'🫐', c:'Fruit', ht:5, sp:36, sun:'Sun / part shade', days:'perennial', depth:'shrub', col:'#8a2f4a', alias:'berry black red bush ribes', note:'Tolerates more shade than most fruit. Very hardy.', comp:'Chives, garlic, nasturtium' },
+  { k:'gooseberry', n:'Gooseberry', e:'🫐', c:'Fruit', ht:4, sp:36, sun:'Sun / part shade', days:'perennial', depth:'shrub', col:'#8fa84f', alias:'berry bush ribes tart', note:'Thorny but productive. Prune to an open goblet shape.', comp:'Chives, tomato, comfrey' },
+  { k:'grape', n:'Grape Vine', e:'🍇', c:'Fruit', ht:8, sp:72, sun:'Full sun', days:'perennial', depth:'vine', col:'#7a4a9e', alias:'vine table wine arbor', note:'Wants a sturdy arbor or wire and a hard annual prune.', comp:'Hyssop, basil, clover' },
+  { k:'watermelon', n:'Watermelon', e:'🍉', c:'Fruit', ht:1, sp:60, sun:'Full sun', days:'80–100 days', depth:'1 in', col:'#3f9e5a', alias:'melon vine sprawling', note:'Huge sprawling vines and a long hot season needed.', comp:'Corn, radish, nasturtium' },
+  { k:'cantaloupe', n:'Cantaloupe', e:'🍈', c:'Fruit', ht:1, sp:36, sun:'Full sun', days:'75–90 days', depth:'1 in', col:'#e0a45f', alias:'melon muskmelon vine', note:'Ripe when the stem slips off the fruit with light pressure.', comp:'Corn, bean, oregano' },
+  { k:'honeydew', n:'Honeydew', e:'🍈', c:'Fruit', ht:1, sp:36, sun:'Full sun', days:'80–95 days', depth:'1 in', col:'#b8d98f', alias:'melon vine sweet', note:'Like cantaloupe but slower. Mulch to keep fruit off soil.', comp:'Corn, radish, marigold' },
+  { k:'rhubarb', n:'Rhubarb', e:'🌱', c:'Fruit', ht:3, sp:36, sun:'Sun / part shade', days:'perennial', depth:'crown', col:'#c04a5f', alias:'stalk perennial pie', note:'Perennial for 10+ years. Never eat the leaves — only stalks.', comp:'Garlic, onion, brassicas' },
+  { k:'apple', n:'Apple Tree (dwarf)', e:'🍎', c:'Fruit', ht:10, sp:96, sun:'Full sun', days:'perennial', depth:'tree', col:'#c0392b', alias:'tree orchard pome dwarf', note:'Dwarf rootstock stays around 8 ft. Plant two for pollination.', comp:'Chives, nasturtium, comfrey' },
+  { k:'pear', n:'Pear Tree (dwarf)', e:'🍐', c:'Fruit', ht:12, sp:96, sun:'Full sun', days:'perennial', depth:'tree', col:'#9eb84a', alias:'tree orchard pome dwarf', note:'Needs a second variety nearby to set fruit well.', comp:'Chive, clover, borage' },
+  { k:'peach', n:'Peach Tree (dwarf)', e:'🍑', c:'Fruit', ht:10, sp:96, sun:'Full sun', days:'perennial', depth:'tree', col:'#e08a6f', alias:'tree stone orchard dwarf', note:'Self-fertile. Thin the young fruit for bigger peaches.', comp:'Garlic, tansy, basil' },
+  { k:'cherry', n:'Cherry Tree (dwarf)', e:'🍒', c:'Fruit', ht:12, sp:96, sun:'Full sun', days:'perennial', depth:'tree', col:'#a02f3f', alias:'tree stone orchard dwarf sour sweet', note:'Net it before the birds find it — they always do.', comp:'Chives, marigold, clover' },
+  { k:'lemon', n:'Lemon Tree', e:'🍋', c:'Fruit', ht:8, sp:72, sun:'Full sun', days:'perennial', depth:'tree', col:'#e0c44a', alias:'citrus tree meyer container', note:'Grow in a pot and bring it indoors where winters freeze.', comp:'Basil, marigold, comfrey' },
+  { k:'orange', n:'Orange Tree', e:'🍊', c:'Fruit', ht:12, sp:96, sun:'Full sun', days:'perennial', depth:'tree', col:'#e0862b', alias:'citrus tree', note:'Frost-tender citrus for zone 9+ or a large container.', comp:'Marigold, clover, lavender' },
+  { k:'fig', n:'Fig Tree', e:'🍈', c:'Fruit', ht:12, sp:96, sun:'Full sun', days:'perennial', depth:'tree', col:'#7a5a8a', alias:'tree mediterranean', note:'Fruits best when the roots are a bit restricted.', comp:'Rue, strawberry, thyme' },
+  { k:'kiwi', n:'Hardy Kiwi', e:'🥝', c:'Fruit', ht:12, sp:96, sun:'Full sun', days:'perennial', depth:'vine', col:'#7fa83f', alias:'vine arbor hardy', note:'Vigorous vine needing a strong structure and a male plant.', comp:'Comfrey, clover' },
+  { k:'pineapple', n:'Pineapple', e:'🍍', c:'Fruit', ht:3, sp:24, sun:'Full sun', days:'18–24 months', depth:'crown', col:'#d9a83f', alias:'tropical bromeliad container', note:'Start from a supermarket crown. Very slow but fun.', comp:'Grow on its own' },
+  { k:'banana', n:'Banana', e:'🍌', c:'Fruit', ht:12, sp:96, sun:'Full sun', days:'perennial', depth:'pup', col:'#e0c25f', alias:'tropical clump', note:'Tropical clumping plant. Needs shelter from wind.', comp:'Sweet potato, ginger' }
 ];
 
 const CATS = ['All', 'Vegetable', 'Herb', 'Fruit'];
@@ -496,6 +591,90 @@ const PRESETS = [
   { n:'Small plot 10×10', w:10, h:10 },
   { n:'Family plot 12×16', w:16, h:12 },
   { n:'Big garden 20×30', w:30, h:20 }
+];
+
+/* ---------------- who grows well next to whom ----------------
+   Rules match an unordered pair of neighbouring plants. A side can be a
+   comma-separated list of keys, '@group', '#Category', or '*' for anything.
+   A conflict always outranks a benefit for the same pair.               */
+const GROUPS = {
+  allium:    ['onion','garlic','leek','chives'],
+  legume:    ['pea','bean'],
+  brassica:  ['cabbage','broccoli','cauliflower','kale','brussels','bokchoy','turnip','arugula'],
+  nightshade:['tomato','cherrytomato','pepper','chili','eggplant','potato'],
+  cucurbit:  ['cucumber','zucchini','squash','pumpkin','watermelon','cantaloupe','honeydew'],
+  aromatic:  ['rosemary','sage','thyme','oregano','marjoram','lavender','tarragon'],
+  tree:      ['apple','pear','peach','cherry','lemon','orange','fig','banana','bay']
+};
+
+const RULES = [
+  // --- conflicts ---
+  { bad:1, a:'fennel', b:'*',
+    why:'Fennel puts out a compound that slows almost every vegetable. Give it a corner of its own.' },
+  { bad:1, a:'@allium', b:'@legume',
+    why:'The onion family stunts beans and peas — keep a couple of feet between them.' },
+  { bad:1, a:'@allium', b:'asparagus',
+    why:'Alliums compete with asparagus crowns and weaken the bed over time.' },
+  { bad:1, a:'@brassica', b:'strawberry',
+    why:'Cabbage-family plants crowd strawberries and the two share slugs and beetles.' },
+  { bad:1, a:'@brassica', b:'tomato,cherrytomato',
+    why:'Tomatoes and cabbage-family plants check each other’s growth and feed just as hard.' },
+  { bad:1, a:'potato', b:'tomato,cherrytomato',
+    why:'Both carry late blight, so planting them together hands it an easy jump.' },
+  { bad:1, a:'potato', b:'@cucurbit',
+    why:'Potatoes and the squash family trade blight and compete for the same water.' },
+  { bad:1, a:'corn', b:'tomato,cherrytomato',
+    why:'Corn earworm and tomato fruitworm are the same insect — don’t build it a bridge.' },
+  { bad:1, a:'carrot', b:'dill',
+    why:'Dill draws carrot fly and stunts the roots as it matures.' },
+  { bad:1, a:'cucumber', b:'sage,rosemary',
+    why:'Strong aromatic herbs stunt cucumbers.' },
+  { bad:1, a:'blueberry', b:'#Vegetable,#Herb',
+    why:'Blueberries need acid soil (pH 4.5–5.5) that most vegetables and herbs can’t tolerate.' },
+  { bad:1, a:'mint', b:'*',
+    why:'Mint runs underground and swamps its neighbours — sink it in a pot to contain the roots.' },
+
+  // --- good pairings ---
+  { good:1, a:'tomato,cherrytomato', b:'basil',
+    why:'The classic pairing — basil helps mask tomatoes from hornworm and thrips.' },
+  { good:1, a:'tomato,cherrytomato', b:'carrot,parsley,chives,lettuce,asparagus',
+    why:'Shallow roots and low leaves use the space under tomatoes without competing.' },
+  { good:1, a:'corn', b:'@legume',
+    why:'Three Sisters: corn gives the beans a pole and the beans feed the soil nitrogen.' },
+  { good:1, a:'corn', b:'@cucurbit',
+    why:'Three Sisters: sprawling squash leaves shade out weeds around the corn.' },
+  { good:1, a:'@legume', b:'@cucurbit',
+    why:'Beans fix the nitrogen that hungry squash and cucumbers want.' },
+  { good:1, a:'carrot', b:'@allium',
+    why:'The onion family masks the smell that leads carrot fly to the roots.' },
+  { good:1, a:'@brassica', b:'dill,rosemary,sage,thyme,mint',
+    why:'Aromatic herbs confuse the cabbage moth looking for somewhere to lay.' },
+  { good:1, a:'@brassica', b:'celery,beet,@allium',
+    why:'Different rooting depths, so they share a bed without fighting over it.' },
+  { good:1, a:'lettuce', b:'carrot,radish,strawberry,cucumber,@allium',
+    why:'Quick salad greens fill the gaps while slower neighbours size up.' },
+  { good:1, a:'strawberry', b:'spinach,lettuce,thyme,@legume',
+    why:'Low leafy neighbours keep the soil shaded and the fruit clean.' },
+  { good:1, a:'@cucurbit', b:'radish,oregano',
+    why:'Radishes pull cucumber beetles away from the vines.' },
+  { good:1, a:'pepper,chili', b:'basil,oregano,spinach,carrot,@allium',
+    why:'Herbs deter aphids while the low roots leave the peppers room.' },
+  { good:1, a:'eggplant', b:'@legume,thyme,tarragon',
+    why:'Beans feed the soil that hungry eggplant strips, and the herbs deter flea beetle.' },
+  { good:1, a:'pea', b:'carrot,radish,cucumber,turnip,corn',
+    why:'Peas leave nitrogen behind for the roots growing beside them.' },
+  { good:1, a:'spinach', b:'@legume,radish,strawberry',
+    why:'Spinach shades the soil while its neighbours climb past it.' },
+  { good:1, a:'celery', b:'@legume,leek,tomato,cherrytomato',
+    why:'Celery’s scent puts off the whitefly that bothers all three.' },
+  { good:1, a:'asparagus', b:'parsley,basil',
+    why:'Parsley and basil are the traditional understory for an asparagus bed.' },
+  { good:1, a:'potato', b:'@legume,corn,@brassica',
+    why:'Beans and corn feed and shelter potatoes without sharing their diseases.' },
+  { good:1, a:'@tree', b:'chives,garlic,lavender',
+    why:'Alliums under fruit trees deter pests, and lavender brings in the pollinators.' },
+  { good:1, a:'lavender', b:'@cucurbit,strawberry,pepper,chili',
+    why:'Lavender pulls in the bees that every fruiting crop depends on.' }
 ];
 
 /* ---------------- state ---------------- */
@@ -520,6 +699,8 @@ const state = Object.assign({
   name: '',
   w: 12,
   h: 10,
+  sunDir: 'S',        // side the sun comes from; shade falls the opposite way
+  showShade: true,
   placed: []          // { id, k, x, y, s }
 }, loadState() || {});
 
@@ -563,6 +744,17 @@ function matches(p) {
   return (cat === 'All' || p.c === cat) && matchesQuery(p);
 }
 
+/* a match on the name beats one buried in the growing notes */
+function relevance(p) {
+  if (!query) return 0;
+  const n = p.n.toLowerCase();
+  if (n.startsWith(query)) return 0;
+  if (n.split(/\s+/).some(w => w.startsWith(query))) return 1;
+  if (n.includes(query)) return 2;
+  if ((p.alias || '').split(/\s+/).some(w => w.startsWith(query))) return 3;
+  return 4;
+}
+
 function renderList() {
   const found = PLANTS.filter(matches);
   listEl.innerHTML = '';
@@ -590,7 +782,8 @@ function renderList() {
 
   const groups = cat === 'All' ? ['Vegetable', 'Herb', 'Fruit'] : [cat];
   groups.forEach(g => {
-    const items = found.filter(p => p.c === g).sort((a, b) => a.n.localeCompare(b.n));
+    const items = found.filter(p => p.c === g)
+                       .sort((a, b) => relevance(a) - relevance(b) || a.n.localeCompare(b.n));
     if (!items.length) return;
     const label = document.createElement('div');
     label.className = 'group-label';
@@ -629,6 +822,9 @@ function renderDetail() {
   }
   const p = byKey[selectedKey];
   const size = footprint(p);
+  const foes = PLANTS.filter(q => q.k !== p.k)
+                     .filter(q => { const v = verdict(p.k, q.k); return v && v.bad; })
+                     .map(q => q.n);
   detailEl.innerHTML =
     '<h3>' + p.e + ' ' + p.n + '</h3>' +
     '<div class="facts">' +
@@ -638,7 +834,8 @@ function renderDetail() {
       fact('Sow depth', p.depth) +
     '</div>' +
     '<p>' + p.note + '</p>' +
-    '<p><b>Plant near:</b> ' + p.comp + '</p>';
+    '<p><b>Plant near:</b> ' + p.comp + '</p>' +
+    (foes.length ? '<p class="foes"><b>Keep away from:</b> ' + foes.join(', ') + '</p>' : '');
 }
 function fact(label, val) {
   return '<div class="fact">' + label + '<b>' + val + '</b></div>';
@@ -710,12 +907,30 @@ function renderBed() {
   bed.style.width = state.w * cellPx + 'px';
   bed.style.height = state.h * cellPx + 'px';
 
-  [...bed.querySelectorAll('.plant')].forEach(n => n.remove());
+  [...bed.querySelectorAll('.plant, .shade-cell')].forEach(n => n.remove());
+
+  if (state.showShade) {
+    shadeRects().forEach(r => {
+      const sh = document.createElement('div');
+      sh.className = 'shade-cell';
+      sh.style.left = r.x * cellPx + 'px';
+      sh.style.top = r.y * cellPx + 'px';
+      sh.style.width = r.w * cellPx + 'px';
+      sh.style.height = r.h * cellPx + 'px';
+      sh.title = 'Shaded by ' + byKey[r.k].n;
+      bed.appendChild(sh);
+    });
+  }
+
+  // plants caught up in a conflict get a badge so problems are visible on the bed
+  const flagged = new Set();
+  planCheck().bad.forEach(row => row.ids.forEach(id => flagged.add(id)));
+
   state.placed.forEach(pl => {
     const p = byKey[pl.k];
     if (!p) return;
     const d = document.createElement('div');
-    d.className = 'plant' + (pl.s > 1 ? ' big' : '');
+    d.className = 'plant' + (pl.s > 1 ? ' big' : '') + (flagged.has(pl.id) ? ' warn' : '');
     d.style.left = pl.x * cellPx + 'px';
     d.style.top = pl.y * cellPx + 'px';
     d.style.width = pl.s * cellPx + 'px';
@@ -766,6 +981,144 @@ function areaFree(x, y, s, occ) {
     for (let dy = 0; dy < s; dy++)
       if (occ.has((x + dx) + ',' + (y + dy))) return false;
   return true;
+}
+
+/* ---------------- companion + sun checking ---------------- */
+function sideMatches(side, k) {
+  if (side === '*') return true;
+  return side.split(',').some(tok => {
+    if (tok[0] === '@') return (GROUPS[tok.slice(1)] || []).includes(k);
+    if (tok[0] === '#') return byKey[k] && byKey[k].c === tok.slice(1);
+    return tok === k;
+  });
+}
+
+/* what these two plants do to each other, conflicts first */
+function verdict(k1, k2) {
+  let benefit = null;
+  for (const r of RULES) {
+    const hit = (sideMatches(r.a, k1) && sideMatches(r.b, k2)) ||
+                (sideMatches(r.a, k2) && sideMatches(r.b, k1));
+    if (!hit) continue;
+    if (r.a === '*' || r.b === '*') {         // '*' rules never fire on their own kind
+      if (k1 === k2) continue;
+    }
+    if (r.bad) return { bad: true, why: r.why };
+    if (!benefit) benefit = { good: true, why: r.why };
+  }
+  return benefit;
+}
+
+/* touching or diagonally adjacent counts as neighbouring */
+function adjacent(a, b) {
+  return a.x < b.x + b.s + 1 && b.x < a.x + a.s + 1 &&
+         a.y < b.y + b.s + 1 && b.y < a.y + a.s + 1;
+}
+
+function neighbourPairs() {
+  const out = [];
+  for (let i = 0; i < state.placed.length; i++)
+    for (let j = i + 1; j < state.placed.length; j++)
+      if (adjacent(state.placed[i], state.placed[j])) out.push([state.placed[i], state.placed[j]]);
+  return out;
+}
+
+/* A plant casts shade directly away from the sun. Around midsummer a shadow
+   runs roughly two thirds of the plant's height, so that is what we draw. */
+const SHADE_MIN_HT = 3;
+function shadeRects() {
+  const dir = { S: [0, -1], N: [0, 1], E: [-1, 0], W: [1, 0] }[state.sunDir || 'S'];
+  const rects = [];
+  state.placed.forEach(pl => {
+    const p = byKey[pl.k];
+    if (!p || p.ht < SHADE_MIN_HT) return;
+    const len = Math.max(1, Math.round(p.ht * 0.66));
+    const r = { id: pl.id, k: pl.k, x: pl.x, y: pl.y, w: pl.s, h: pl.s };
+    if (dir[0]) { r.w = len; r.x = dir[0] < 0 ? pl.x - len : pl.x + pl.s; }
+    else        { r.h = len; r.y = dir[1] < 0 ? pl.y - len : pl.y + pl.s; }
+    // clip to the bed
+    const x0 = Math.max(0, r.x), y0 = Math.max(0, r.y);
+    const x1 = Math.min(state.w, r.x + r.w), y1 = Math.min(state.h, r.y + r.h);
+    if (x1 > x0 && y1 > y0) rects.push({ id: r.id, k: r.k, x: x0, y: y0, w: x1 - x0, h: y1 - y0 });
+  });
+  return rects;
+}
+
+function shadeMap() {
+  const map = new Map();
+  shadeRects().forEach(r => {
+    for (let x = r.x; x < r.x + r.w; x++)
+      for (let y = r.y; y < r.y + r.h; y++) {
+        const key = x + ',' + y;
+        if (!map.has(key)) map.set(key, []);
+        map.get(key).push(r);
+      }
+  });
+  return map;
+}
+
+/* how much of a plant's footprint sits in shade, and who is casting it */
+function shadeOn(pl, map) {
+  const from = new Map();
+  let hit = 0;
+  for (let dx = 0; dx < pl.s; dx++)
+    for (let dy = 0; dy < pl.s; dy++) {
+      const src = map.get((pl.x + dx) + ',' + (pl.y + dy));
+      if (!src) continue;
+      const real = src.filter(r => r.id !== pl.id);
+      if (!real.length) continue;
+      hit++;
+      real.forEach(r => from.set(r.k, true));
+    }
+  return { frac: hit / (pl.s * pl.s), sources: [...from.keys()] };
+}
+
+function wantsFullSun(k) { return byKey[k] && byKey[k].sun === 'Full sun'; }
+
+/* Every problem and benefit in the current plan, grouped so a row of six
+   lettuces beside six carrots reads as one line rather than thirty-six. */
+function planCheck() {
+  const bad = new Map(), good = new Map(), shade = new Map();
+
+  neighbourPairs().forEach(([a, b]) => {
+    const v = verdict(a.k, b.k);
+    if (!v) return;
+    const names = [byKey[a.k].n, byKey[b.k].n].sort();
+    const id = names.join(' + ');
+    const bucket = v.bad ? bad : good;
+    if (!bucket.has(id)) bucket.set(id, { names, why: v.why, ids: [], count: 0 });
+    const row = bucket.get(id);
+    row.count++;
+    row.ids.push(a.id, b.id);
+  });
+
+  const map = shadeMap();
+  state.placed.forEach(pl => {
+    if (!wantsFullSun(pl.k)) return;
+    const s = shadeOn(pl, map);
+    if (s.frac < 0.5 || !s.sources.length) return;      // a clipped corner is fine
+    const srcNames = s.sources.map(k => byKey[k].n).sort();
+    const id = byKey[pl.k].n + ' < ' + srcNames.join(', ');
+    if (!shade.has(id)) shade.set(id, { name: byKey[pl.k].n, srcNames, ids: [], count: 0 });
+    const row = shade.get(id);
+    row.count++;
+    row.ids.push(pl.id);
+  });
+
+  return { bad: [...bad.values()], good: [...good.values()], shade: [...shade.values()] };
+}
+
+/* conflicts a plant would run into if dropped at x,y — used for live feedback */
+function conflictsAt(k, x, y, s, exceptId) {
+  const me = { x, y, s };
+  const out = [];
+  state.placed.forEach(pl => {
+    if (pl.id === exceptId || !adjacent(me, pl)) return;
+    const v = verdict(k, pl.k);
+    if (v) out.push({ with: byKey[pl.k].n, bad: !!v.bad, why: v.why });
+  });
+  out.sort((a, b) => (b.bad ? 1 : 0) - (a.bad ? 1 : 0));
+  return out;
 }
 
 function cellAt(evt) {
@@ -849,6 +1202,8 @@ function endDrag(commit) {
   }
   drag = null;
   renderBed();      // also snaps back to the original spot on an illegal drop
+  renderSummary();
+  renderPlanCheck();
 }
 
 function cancelHold() {
@@ -934,7 +1289,12 @@ function endPaint() {
   if (changedThisDrag) saveState(); else history.pop();
 }
 
-bed.addEventListener('pointerleave', () => ghost.classList.add('hidden'));
+bed.addEventListener('pointerleave', e => {
+  ghost.classList.add('hidden');
+  // a finger lifting fires pointerleave straight away — that must not wipe the
+  // hint the tap just produced, so only a real cursor leaving clears it
+  if (e.pointerType !== 'touch') showPlaceHint(null, '');
+});
 
 function act(e) {
   let changed = false;
@@ -946,11 +1306,20 @@ function act(e) {
     const i = plantIndexAt(c.x, c.y);
     if (i !== -1) selectPlant(state.placed[i].k);
   }
+  if (changed && !erasing && selectedKey) hintForLastPlaced();
+  if (!changed && !erasing && selectedKey) {
+    const p = byKey[selectedKey], sz = footprint(p);
+    const a = anchorFor(cellAt(e), sz);
+    if (!areaFree(a.x, a.y, sz, occupied()))
+      showPlaceHint('bad', 'No room there — ' + p.n + ' needs ' + sz + '×' + sz + ' ft of clear ground.', true);
+  }
   if (changed) {
     changedThisDrag = true;
     renderBed();
     renderSummary();
-    updateGhost(e);
+    renderPlanCheck();
+    // on touch the ghost would immediately overwrite the hint we just set
+    if (e.pointerType !== 'touch') updateGhost(e);
   }
 }
 
@@ -965,7 +1334,43 @@ function updateGhost(e) {
   ghost.style.width = s * cellPx + 'px';
   ghost.style.height = s * cellPx + 'px';
   ghost.textContent = p.e;
-  ghost.classList.toggle('bad', !areaFree(a.x, a.y, s, occupied()));
+  const fits = areaFree(a.x, a.y, s, occupied());
+  ghost.classList.toggle('bad', !fits);
+
+  // tell people what this spot means for the plant before they commit to it
+  const near = fits ? conflictsAt(p.k, a.x, a.y, s) : [];
+  const shaded = fits && wantsFullSun(p.k) &&
+                 shadeOn({ x: a.x, y: a.y, s: s, id: null }, shadeMap()).frac >= 0.5;
+  ghost.classList.toggle('warn', !!near.length && near[0].bad);
+  if (!fits) showPlaceHint('bad', 'No room here — ' + p.n + ' needs ' + s + '×' + s + ' ft.');
+  else if (near.length && near[0].bad) showPlaceHint('bad', '⚠ Beside ' + near[0].with + ': ' + near[0].why);
+  else if (shaded) showPlaceHint('shade', '🌥 This square is in shade and ' + p.n + ' wants full sun.');
+  else if (near.length) showPlaceHint('good', '✓ Beside ' + near[0].with + ': ' + near[0].why);
+  else showPlaceHint(null, '');
+}
+
+/* after a tap-to-plant there is no cursor to hover, so explain the spot it landed in */
+function hintForLastPlaced() {
+  const pl = state.placed[state.placed.length - 1];
+  if (!pl) return;
+  const near = conflictsAt(pl.k, pl.x, pl.y, pl.s, pl.id);
+  const shaded = wantsFullSun(pl.k) && shadeOn(pl, shadeMap()).frac >= 0.5;
+  if (near.length && near[0].bad) showPlaceHint('bad', '⚠ Beside ' + near[0].with + ': ' + near[0].why, true);
+  else if (shaded) showPlaceHint('shade', '🌥 That square is in shade and ' + byKey[pl.k].n + ' wants full sun.', true);
+  else if (near.length) showPlaceHint('good', '✓ Beside ' + near[0].with + ': ' + near[0].why, true);
+  else showPlaceHint(null, '');
+}
+
+let hintKind = null, hintTimer = null;
+function showPlaceHint(kind, text, sticky) {
+  const el = $('placeHint');
+  clearTimeout(hintTimer);
+  if (hintKind === kind && el.textContent === text) return;
+  hintKind = kind;
+  el.textContent = text;
+  el.className = 'place-hint' + (kind ? ' show ' + kind : '');
+  // a tapped hint has no pointerleave coming to clear it
+  if (sticky && kind) hintTimer = setTimeout(() => showPlaceHint(null, ''), 6000);
 }
 
 /* ---------------- history ---------------- */
@@ -1002,6 +1407,19 @@ function renderToolbar() {
   bed.classList.toggle('erasing', erasing);
 }
 
+$('sunDir').onchange = e => {
+  state.sunDir = e.target.value;
+  renderBed();
+  renderPlanCheck();
+  saveState();
+};
+$('shadeBtn').onclick = () => {
+  state.showShade = !state.showShade;
+  $('shadeBtn').classList.toggle('on', state.showShade);
+  renderBed();
+  saveState();
+};
+
 $('eraseBtn').onclick = () => {
   erasing = !erasing;
   if (erasing) { selectedKey = null; renderList(); renderDetail(); }
@@ -1013,12 +1431,86 @@ $('clearBtn').onclick = () => {
   if (!confirm('Remove all ' + state.placed.length + ' plants from the bed?')) return;
   pushHistory();
   state.placed = [];
-  renderBed(); renderSummary(); saveState();
+  renderBed(); renderSummary(); renderPlanCheck(); saveState();
 };
 $('zoomIn').onclick = () => { cellPx = clamp(cellPx + 6, 16, 72); renderBed(); };
 $('zoomOut').onclick = () => { cellPx = clamp(cellPx - 6, 16, 72); renderBed(); };
 
 /* ---------------- summary ---------------- */
+function renderPlanCheck() {
+  const box = $('planCheck');
+  const { bad, good, shade } = planCheck();
+  box.innerHTML = '';
+
+  if (!state.placed.length) {
+    box.innerHTML = '<p class="hint" style="margin:0">Once there are plants in the bed, this panel flags neighbours that fight and anything sitting in the shade.</p>';
+    return;
+  }
+
+  const tally = document.createElement('div');
+  tally.className = 'tally';
+  tally.innerHTML =
+    pill('bad', bad.length, bad.length === 1 ? 'conflict' : 'conflicts') +
+    pill('shade', shade.length, shade.length === 1 ? 'shade problem' : 'shade problems') +
+    pill('good', good.length, good.length === 1 ? 'good pairing' : 'good pairings');
+  box.appendChild(tally);
+
+  if (!bad.length && !shade.length) {
+    const ok = document.createElement('p');
+    ok.className = 'all-clear';
+    ok.textContent = good.length
+      ? '✓ Nothing fighting, and some genuinely good company down there.'
+      : '✓ Nothing fighting in this plan.';
+    box.appendChild(ok);
+  }
+
+  bad.forEach(r => box.appendChild(issueRow('bad', '⚠',
+    r.names[0] + ' next to ' + r.names[1], r.why, r.count, r.ids)));
+
+  shade.forEach(r => box.appendChild(issueRow('shade', '🌥',
+    r.name + ' is shaded by ' + r.srcNames.join(' and '),
+    byKey[keyOfName(r.name)] && 'It wants full sun — move it clear of the shadow, or swap in something that takes part shade.',
+    r.count, r.ids)));
+
+  good.forEach(r => box.appendChild(issueRow('good', '✓',
+    r.names[0] + ' with ' + r.names[1], r.why, r.count, r.ids)));
+}
+
+function keyOfName(n) {
+  const p = PLANTS.find(x => x.n === n);
+  return p ? p.k : null;
+}
+
+function pill(kind, n, label) {
+  return '<span class="pill ' + kind + (n ? '' : ' zero') + '"><b>' + n + '</b> ' + label + '</span>';
+}
+
+function issueRow(kind, icon, title, why, count, ids) {
+  const row = document.createElement('button');
+  row.className = 'issue ' + kind;
+  row.innerHTML =
+    '<span class="ic">' + icon + '</span>' +
+    '<span class="txt"><b>' + escapeHtml(title) +
+    (count > 1 ? ' <span class="times-n">×' + count + '</span>' : '') + '</b>' +
+    '<span class="why">' + escapeHtml(why || '') + '</span></span>';
+  row.title = 'Show on the bed';
+  row.onclick = () => flashPlants(ids);
+  return row;
+}
+
+/* pulse the plants an issue refers to so it can be found on a busy bed */
+function flashPlants(ids) {
+  bed.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  [...new Set(ids)].forEach(id => {
+    const el = bed.querySelector('[data-id="' + id + '"]');
+    if (!el) return;
+    el.classList.remove('flash');
+    void el.offsetWidth;          // restart the animation
+    el.classList.add('flash');
+    setTimeout(() => el.classList.remove('flash'), 1800);
+  });
+}
+
 function renderSummary() {
   const counts = {};
   let used = 0;
@@ -1053,7 +1545,7 @@ function renderSummary() {
     rm.onclick = () => {
       pushHistory();
       state.placed = state.placed.filter(pl => pl.k !== k);
-      renderBed(); renderSummary(); saveState();
+      renderBed(); renderSummary(); renderPlanCheck(); saveState();
     };
     item.appendChild(rm);
     legend.appendChild(item);
@@ -1099,6 +1591,7 @@ window.addEventListener('resize', () => {
 function renderAll() {
   renderBed();
   renderSummary();
+  renderPlanCheck();
   renderToolbar();
 }
 
@@ -1106,6 +1599,8 @@ function renderAll() {
 wIn.value = state.w;
 hIn.value = state.h;
 $('gardenName').value = state.name || '';
+$('sunDir').value = state.sunDir || 'S';
+$('shadeBtn').classList.toggle('on', state.showShade !== false);
 buildChips();
 buildPresets();
 renderList();
