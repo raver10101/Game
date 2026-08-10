@@ -2,7 +2,11 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Garden">
+<meta name="theme-color" content="#4c7a3f">
 <title>Garden Planner</title>
 <style>
   :root {
@@ -20,10 +24,12 @@
     --radius: 12px;
   }
 
-  * { box-sizing: border-box; margin: 0; padding: 0; }
+  * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
+  header, aside, .toolbar, .ruler, .plant, .legend { -webkit-user-select: none; user-select: none; }
 
   html, body {
     height: 100%;
+    -webkit-text-size-adjust: 100%;
     font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
     background: var(--bg);
     color: var(--ink);
@@ -39,6 +45,7 @@
     grid-template-rows: auto 1fr;
     grid-template-areas: "head head" "side main";
     height: 100%;
+    height: 100dvh;
   }
 
   header {
@@ -47,6 +54,8 @@
     align-items: center;
     gap: 14px;
     padding: 12px 20px;
+    padding-left: max(20px, env(safe-area-inset-left));
+    padding-right: max(20px, env(safe-area-inset-right));
     background: var(--green);
     color: #fff;
     box-shadow: var(--shadow);
@@ -203,7 +212,7 @@
     border: 4px solid var(--soil);
     border-radius: 6px;
     cursor: crosshair;
-    touch-action: none;
+    touch-action: manipulation;
     box-shadow: inset 0 0 22px rgba(0,0,0,0.22);
   }
   #bed.erasing { cursor: not-allowed; }
@@ -272,7 +281,23 @@
     .backdrop.show {
       display: block; position: fixed; inset: 0; background: rgba(0,0,0,0.35); z-index: 15;
     }
-    main { padding: 12px; }
+    main {
+      padding: 12px;
+      padding-bottom: max(12px, env(safe-area-inset-bottom));
+    }
+
+    /* finger-sized controls */
+    .btn { padding: 12px 18px; }
+    .btn.sm { padding: 11px 14px; font-size: 14px; }
+    .menu-btn { padding: 4px 8px; margin-left: -8px; font-size: 22px; }
+    .chip { padding: 9px 14px; font-size: 13.5px; }
+    .plant-row { padding: 11px 10px; }
+    .plant-row .em { font-size: 22px; }
+    .stepper button { width: 44px; height: 44px; }
+    .stepper input { height: 44px; }
+    .clear-search { width: 30px; height: 30px; line-height: 28px; font-size: 16px; }
+    .legend-item { padding: 9px 12px; }
+    .legend-item button { padding: 0 6px; font-size: 17px; min-width: 32px; min-height: 32px; }
   }
 </style>
 </head>
@@ -764,28 +789,57 @@ function tryErase(evt) {
   return true;
 }
 
-let painting = false, changedThisDrag = false;
+let painting = false, changedThisDrag = false, touchStart = null;
 
+/* Mouse: press and drag paints a row of plants.
+   Touch: a drag has to scroll the page, so we only plant on a clean tap. */
 bed.addEventListener('pointerdown', e => {
   if (e.button !== undefined && e.button !== 0) return;
+  if (e.pointerType === 'touch') {
+    touchStart = { x: e.clientX, y: e.clientY, t: Date.now() };
+    return;
+  }
   bed.setPointerCapture(e.pointerId);
   painting = true;
   changedThisDrag = false;
   pushHistory();
   act(e);
 });
+
 bed.addEventListener('pointermove', e => {
+  if (e.pointerType === 'touch') return;
   updateGhost(e);
   if (painting) act(e);
 });
-bed.addEventListener('pointerup', () => {
+
+bed.addEventListener('pointerup', e => {
+  if (e.pointerType === 'touch') {
+    const s = touchStart;
+    touchStart = null;
+    if (!s) return;
+    const moved = Math.hypot(e.clientX - s.x, e.clientY - s.y);
+    if (moved > 12 || Date.now() - s.t > 800) return;   // that was a scroll, not a tap
+    changedThisDrag = false;
+    pushHistory();
+    act(e);
+    if (changedThisDrag) saveState(); else history.pop();
+    ghost.classList.add('hidden');
+    return;
+  }
+  endPaint();
+});
+
+bed.addEventListener('pointercancel', e => {
+  if (e.pointerType === 'touch') { touchStart = null; return; }
+  endPaint();
+});
+
+function endPaint() {
+  if (!painting) return;
   painting = false;
   if (changedThisDrag) saveState(); else history.pop();
-});
-bed.addEventListener('pointercancel', () => {
-  painting = false;
-  if (changedThisDrag) saveState(); else history.pop();
-});
+}
+
 bed.addEventListener('pointerleave', () => ghost.classList.add('hidden'));
 
 function act(e) {
