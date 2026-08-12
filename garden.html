@@ -619,6 +619,7 @@
         <div class="field io">
           <label>Plan file</label>
           <div class="io-btns">
+            <button class="btn ghost sm" id="shareBtn">⤴ Share garden</button>
             <button class="btn ghost sm" id="exportBtn">⬇ Save to file</button>
             <button class="btn ghost sm" id="importBtn">⬆ Open file</button>
             <button class="btn ghost sm" id="printBtn">🖨 Print</button>
@@ -722,6 +723,7 @@
   </main>
 </div>
 
+<script id="planSeed">/* PLAN_SEED */</script>
 <script>
 /* ---------------- plant library ---------------- */
 const PLANTS = [
@@ -935,6 +937,7 @@ function readStore(key) {
 }
 
 function loadState() {
+  if (window.__PLAN) return window.__PLAN;    // opened from a shared plan file
   const saved = readStore(KEY);
   if (saved) return saved;
   const v1 = readStore(OLD_KEY);          // a single-bed plan from before
@@ -1967,6 +1970,91 @@ document.addEventListener('keydown', e => {
 $('yearPrev').onclick = () => setYear(state.year - 1);
 $('yearNext').onclick = () => setYear(state.year + 1);
 $('copyYear').onclick = copyYearForward;
+
+
+/* ---------------- sharing the garden ----------------
+   Builds a copy of this page with the current plan baked in, so whoever opens
+   it sees the garden without needing the app, an account or a network. On a
+   phone that goes straight to the system share sheet; elsewhere it downloads. */
+const SEED_SLOT = '/*' + ' PLAN_SEED ' + '*/';   // split so the slot itself is unique in the file
+
+function planFileName(ext) {
+  const base = (state.name || 'garden-plan')
+    .replace(/[^a-z0-9-_ ]/gi, '').trim().replace(/\s+/g, '-').toLowerCase() || 'garden-plan';
+  return base + '.' + ext;
+}
+
+/* escaping every < keeps a garden whose name contains a closing script tag
+   from breaking out of the seed and truncating the page it is written into */
+function seedScript() {
+  return 'window.__PLAN = ' + JSON.stringify(state).replace(/</g, '\\u003c') + ';';
+}
+
+/* Preferred: re-read this page's own source and drop the plan into its seed
+   slot, giving a byte-clean copy of the app. */
+async function fetchSource() {
+  const res = await fetch(location.href, { cache: 'no-store' });
+  if (!res.ok) throw new Error('could not read this page');
+  const src = await res.text();
+  if (!src.includes(SEED_SLOT)) throw new Error('no seed slot in this page');
+  return src.replace(SEED_SLOT, seedScript());
+}
+
+/* Fallback for when the page cannot fetch itself — sandboxed frames, mostly.
+   Serialising the live DOM works because every generated panel is rebuilt from
+   the plan on load, so whatever is captured mid-render is thrown away. */
+function snapshotPage() {
+  const el = document.getElementById('planSeed');
+  const prev = el.textContent;
+  el.textContent = seedScript();
+  const html = '<!doctype html>\n<html lang="en">' + document.documentElement.innerHTML + '</html>';
+  el.textContent = prev;
+  return html;
+}
+
+async function buildSharedPage() {
+  try { return await fetchSource(); }
+  catch (err) { return snapshotPage(); }
+}
+
+function downloadFile(blob, name) {
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = name;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
+$('shareBtn').onclick = async () => {
+  const btn = $('shareBtn');
+  const label = btn.textContent;
+  btn.textContent = 'Preparing…';
+  btn.disabled = true;
+  try {
+    const html = await buildSharedPage();
+    const name = planFileName('html');
+    const file = new File([html], name, { type: 'text/html' });
+    const note = (state.name || 'My garden') + ' — open this file in any browser to see the plan.';
+
+    if (navigator.canShare && navigator.canShare({ files: [file] })) {
+      await navigator.share({ files: [file], title: state.name || 'Garden plan', text: note });
+      say('Garden shared.');
+    } else {
+      downloadFile(new Blob([html], { type: 'text/html' }), name);
+      showPlaceHint('good', '✓ Saved ' + name + ' — send that file to anyone and it opens as a working plan.', true);
+    }
+  } catch (err) {
+    if (err && err.name === 'AbortError') { btn.textContent = label; btn.disabled = false; return; }
+    // opened straight off disk, where the page cannot read its own source
+    downloadFile(new Blob([JSON.stringify(state, null, 2)], { type: 'application/json' }), planFileName('json'));
+    showPlaceHint('shade', 'Shared the plan as a data file instead — a full page copy needs the app opened over the web rather than from a file on disk.', true);
+  }
+  btn.textContent = label;
+  btn.disabled = false;
+};
 
 $('exportBtn').onclick = () => {
   const data = JSON.stringify(state, null, 2);
