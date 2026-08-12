@@ -261,6 +261,12 @@
   .preview.hidden { display: none; }
 
 
+  .noscript-note {
+    margin: 0; padding: 16px 20px; background: #fbeae6; color: #8c3b28;
+    border-bottom: 1px solid #e5c0b4; font-size: 14px; line-height: 1.55;
+  }
+  .noscript-note b { display: block; color: #7a2f1e; }
+
   .sr-only {
     position: absolute; width: 1px; height: 1px; margin: -1px;
     padding: 0; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0;
@@ -542,6 +548,14 @@
 </style>
 </head>
 <body>
+<noscript>
+  <div class="noscript-note">
+    <b>This planner needs JavaScript to draw your garden.</b>
+    You are probably looking at a file preview — open the file in Safari or Chrome
+    and the garden will appear. To send a garden to someone's phone, use
+    <b>Share picture</b> in the app instead: an image opens anywhere.
+  </div>
+</noscript>
 <div class="app">
   <header>
     <button class="menu-btn" id="menuBtn" aria-label="Open plant menu">☰</button>
@@ -619,10 +633,11 @@
         <div class="field io">
           <label>Plan file</label>
           <div class="io-btns">
-            <button class="btn ghost sm" id="shareBtn">⤴ Share garden</button>
-            <button class="btn ghost sm" id="exportBtn">⬇ Save to file</button>
-            <button class="btn ghost sm" id="importBtn">⬆ Open file</button>
+            <button class="btn ghost sm" id="shareBtn">⤴ Share picture</button>
+            <button class="btn ghost sm" id="exportBtn">⬇ Save plan</button>
+            <button class="btn ghost sm" id="importBtn">⬆ Open plan</button>
             <button class="btn ghost sm" id="printBtn">🖨 Print</button>
+            <button class="btn ghost sm" id="shareAppBtn" title="A copy of the app with your plan inside. Needs a proper browser — phone previews will not run it.">🖥 Send app</button>
             <input type="file" id="importFile" accept="application/json,.json" hidden>
           </div>
         </div>
@@ -2028,8 +2043,179 @@ function downloadFile(blob, name) {
   setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
 
+
+/* ---------------- the plan as a picture ----------------
+   A phone will not open a web page sent as a file, and previews do not run
+   scripts, so the shareable form of a garden is an image. Drawn here rather
+   than screenshotted so it looks composed instead of cropped. */
+const EMOJI_FONT = '"Apple Color Emoji","Segoe UI Emoji","Noto Color Emoji",system-ui,sans-serif';
+const UI_FONT = 'system-ui,-apple-system,"Segoe UI",sans-serif';
+
+function roundRect(ctx, x, y, w, h, r) {
+  const rr = Math.min(r, w / 2, h / 2);
+  ctx.beginPath();
+  ctx.moveTo(x + rr, y);
+  ctx.arcTo(x + w, y,     x + w, y + h, rr);
+  ctx.arcTo(x + w, y + h, x,     y + h, rr);
+  ctx.arcTo(x,     y + h, x,     y,     rr);
+  ctx.arcTo(x,     y,     x + w, y,     rr);
+  ctx.closePath();
+}
+
+function buildPlanCanvas() {
+  const w = plot().w, h = plot().h;
+  const cell = clamp(Math.round(1100 / w), 26, 56);
+  const pad = 40, gut = 30;                       // gut leaves room for the rulers
+  const bedW = w * cell, bedH = h * cell;
+
+  const live = current();
+  const counts = {};
+  live.forEach(pl => { counts[pl.k] = (counts[pl.k] || 0) + plantsIn(pl); });
+  const keys = Object.keys(counts).sort((a, b) => counts[b] - counts[a]);
+
+  const colW = 250, cols = Math.max(1, Math.floor((bedW + gut) / colW));
+  const legendRows = Math.ceil(keys.length / cols);
+  const width = bedW + gut + pad * 2;
+  const headH = 124;                               // clears the column ruler
+  const legendTop = headH + bedH + 42;
+  const footerY = legendTop + (keys.length ? (legendRows - 1) * 30 + 42 : 0);
+  const height = footerY + 22;
+
+  const scale = 2;
+  const cv = document.createElement('canvas');
+  cv.width = width * scale;
+  cv.height = height * scale;
+  const c = cv.getContext('2d');
+  c.scale(scale, scale);
+
+  c.fillStyle = '#f4f1e8';
+  c.fillRect(0, 0, width, height);
+
+  // heading
+  c.fillStyle = '#24301f';
+  c.font = '700 30px ' + UI_FONT;
+  c.textBaseline = 'alphabetic';
+  c.fillText(state.name || 'Garden plan', pad, pad + 24);
+  c.fillStyle = '#6b7a5e';
+  c.font = '16px ' + UI_FONT;
+  c.fillText(plot().name + '  ·  ' + w + ' × ' + h + ' ft  ·  ' +
+             seasonName(state.season) + ' ' + state.year, pad, pad + 50);
+
+  const bx = pad + gut, by = headH;
+
+  // soil
+  c.fillStyle = '#a9825f';
+  c.fillRect(bx, by, bedW, bedH);
+
+  // shade cast by the taller plants
+  if (state.showShade) {
+    c.fillStyle = 'rgba(24,34,20,0.30)';
+    shadeRects().forEach(r => c.fillRect(bx + r.x * cell, by + r.y * cell, r.w * cell, r.h * cell));
+  }
+
+  // grid
+  c.strokeStyle = 'rgba(255,255,255,0.28)';
+  c.lineWidth = 1;
+  for (let x = 1; x < w; x++) {
+    c.beginPath(); c.moveTo(bx + x * cell + 0.5, by); c.lineTo(bx + x * cell + 0.5, by + bedH); c.stroke();
+  }
+  for (let y = 1; y < h; y++) {
+    c.beginPath(); c.moveTo(bx, by + y * cell + 0.5); c.lineTo(bx + bedW, by + y * cell + 0.5); c.stroke();
+  }
+  c.strokeStyle = '#8c6a4a';
+  c.lineWidth = 4;
+  c.strokeRect(bx - 2, by - 2, bedW + 4, bedH + 4);
+
+  // rulers
+  c.fillStyle = '#6b7a5e';
+  c.font = '11px ' + UI_FONT;
+  c.textAlign = 'center';
+  const step = cell < 34 ? 5 : 1;
+  for (let x = 0; x < w; x++)
+    if ((x + 1) % step === 0 || step === 1) c.fillText(x + 1, bx + x * cell + cell / 2, by - 8);
+  c.textAlign = 'right';
+  for (let y = 0; y < h; y++)
+    if ((y + 1) % step === 0 || step === 1) c.fillText(y + 1, bx - 8, by + y * cell + cell / 2 + 4);
+
+  // plants
+  c.textAlign = 'center';
+  live.forEach(pl => {
+    const p = byKey[pl.k];
+    const x = bx + pl.x * cell, y = by + pl.y * cell, sz = pl.s * cell;
+    c.fillStyle = p.col;
+    roundRect(c, x + 1.5, y + 1.5, sz - 3, sz - 3, 7);
+    c.fill();
+    c.strokeStyle = 'rgba(255,255,255,0.75)';
+    c.lineWidth = 1.5;
+    c.stroke();
+    c.font = Math.round(sz * (pl.s > 1 ? 0.5 : 0.6)) + 'px ' + EMOJI_FONT;
+    c.textBaseline = 'middle';
+    c.fillText(p.e, x + sz / 2, y + sz / 2 + 1);
+    c.textBaseline = 'alphabetic';
+    const n = plantsIn(pl);
+    if (n > 1) {
+      c.font = '700 10px ' + UI_FONT;
+      c.fillStyle = 'rgba(0,0,0,0.55)';
+      c.fillText('×' + n, x + sz - 13, y + sz - 5);
+      c.fillStyle = '#fff';
+      c.fillText('×' + n, x + sz - 14, y + sz - 6);
+    }
+  });
+
+  // legend
+  c.textAlign = 'left';
+  keys.forEach((k, i) => {
+    const p = byKey[k];
+    const lx = pad + (i % cols) * colW;
+    const yy = legendTop + Math.floor(i / cols) * 30;
+    c.fillStyle = p.col;
+    roundRect(c, lx, yy - 11, 13, 13, 4);
+    c.fill();
+    c.fillStyle = '#24301f';
+    c.font = '14px ' + UI_FONT;
+    c.fillText(p.n, lx + 21, yy);
+    c.fillStyle = '#6b7a5e';
+    c.font = '13px ' + UI_FONT;
+    c.fillText('×' + counts[k], lx + 28 + c.measureText(p.n).width, yy);
+  });
+
+  c.fillStyle = '#9aa78c';
+  c.font = '12px ' + UI_FONT;
+  c.fillText('Garden Planner  ·  ' + fmtDate(new Date()), pad, footerY);
+  return cv;
+}
+
+function canvasBlob(cv) {
+  return new Promise(res => cv.toBlob(res, 'image/png'));
+}
+
 $('shareBtn').onclick = async () => {
-  const btn = $('shareBtn');
+  const btn = $('shareBtn'), label = btn.textContent;
+  btn.textContent = 'Drawing…';
+  btn.disabled = true;
+  try {
+    const blob = await canvasBlob(buildPlanCanvas());
+    const name = planFileName('png');
+    const file = new File([blob], name, { type: 'image/png' });
+    const note = (state.name || 'My garden') + ' — ' + plot().name + ', ' +
+                 seasonName(state.season) + ' ' + state.year + '.';
+    if (navigator.canShare && navigator.canShare({ files: [file] })) {
+      await navigator.share({ files: [file], title: state.name || 'Garden plan', text: note });
+      say('Garden picture shared.');
+    } else {
+      downloadFile(blob, name);
+      showPlaceHint('good', '✓ Saved ' + name + ' — a picture opens on any phone or computer.', true);
+    }
+  } catch (err) {
+    if (!err || err.name !== 'AbortError')
+      showPlaceHint('bad', 'Could not draw the picture: ' + (err && err.message ? err.message : 'unknown error'), true);
+  }
+  btn.textContent = label;
+  btn.disabled = false;
+};
+
+$('shareAppBtn').onclick = async () => {
+  const btn = $('shareAppBtn');
   const label = btn.textContent;
   btn.textContent = 'Preparing…';
   btn.disabled = true;
